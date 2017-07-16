@@ -6,6 +6,7 @@ def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
+    # This prevents duplicated log messages when reloading modules.
     if not len(logger.handlers):
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
