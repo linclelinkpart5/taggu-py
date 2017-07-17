@@ -42,12 +42,12 @@ def gen_suffix_item_filter(target_ext: str) -> tt.ItemFilter:
     return item_filter
 
 
-def fuzzy_file_lookup(*, target_dir: str, needle: str) -> str:
-    path = os.path.join(target_dir, needle)
+def fuzzy_file_lookup(*, abs_dir: str, prefix_fn: str) -> str:
+    path = os.path.join(abs_dir, prefix_fn)
     results = glob.glob('{}*'.format(path))
 
     if len(results) != 1:
-        msg = (f'Incorrect number of matches for fuzzy lookup of "{needle}" in directory "{target_dir}"; '
+        msg = (f'Incorrect number of matches for fuzzy lookup of "{prefix_fn}" in directory "{abs_dir}"; '
                f'expected: 1, found: {len(results)}')
         logger.error(msg)
         raise Exception(msg)
@@ -55,14 +55,14 @@ def fuzzy_file_lookup(*, target_dir: str, needle: str) -> str:
     return results[0]
 
 
-def yield_contains_dir(path: str) -> typ.Iterable[str]:
-    if os.path.isdir(path):
-        yield path
+def yield_contains_dir(abs_path: str) -> typ.Iterable[str]:
+    if os.path.isdir(abs_path):
+        yield abs_path
 
 
-def yield_siblings_dir(path: str) -> typ.Iterable[str]:
-    par_dir = os.path.dirname(path)
-    if par_dir != path:
+def yield_siblings_dir(abs_path: str) -> typ.Iterable[str]:
+    par_dir = os.path.dirname(abs_path)
+    if par_dir != abs_path:
         yield par_dir
 
 
@@ -127,7 +127,7 @@ def meta_pairs_siblings(yaml_data: typ.Any
                 logger.warning(f'Item name "{item_name}" is not valid, skipping')
                 continue
 
-            item_path = fuzzy_file_lookup(target_dir=sub_dir, needle=item_name)
+            item_path = fuzzy_file_lookup(abs_dir=sub_dir, prefix_fn=item_name)
             item_name = os.path.basename(item_path)
 
             # Test if the item name is in the list of discovered item names.
@@ -148,16 +148,22 @@ def meta_pairs_contains(yaml_data: typ.Any
         yield sub_dir, yaml_data
 
 
-MetadataCache = typ.MutableMapping[str, typ.MutableMapping['MetaSource', tt.Metadata]]
-
 class MetaSource(enum.Enum):
+    """Represents sources of metadata for items in a Taggu library.
+    The order of the items here is important, it represents the order of overriding (last element overrides previous).
+    """
     ITEM = tt.MetaSourceSpec(file_name='taggu_item.yml', dir_getter=yield_siblings_dir, multiplexer=meta_pairs_siblings)
     SELF = tt.MetaSourceSpec(file_name='taggu_self.yml', dir_getter=yield_contains_dir, multiplexer=meta_pairs_contains)
+
+    def __str__(self):
+        return '{}.{}'.format(type(self).__name__, self.name)
+
+    __repr__ = __str__
 
     @classmethod
     def meta_files_from_item(cls, item_path: str) -> typ.Iterable[typ.Tuple[str, 'MetaSource']]:
         """Given an item path, yields all possible meta file paths that could provide immediate metadata for that item.
-        This does not check if the resulting meta file paths exist, so appropriate checking is needed.
+        This does not verify that any of the resulting meta file paths exist, so appropriate checking is needed.
         """
         for meta_source in cls:
             dir_getter: tt.DirGetter = meta_source.value.dir_getter
@@ -173,7 +179,7 @@ class MetaSource(enum.Enum):
                              , item_filter: tt.ItemFilter=None
                              ) -> typ.Iterable[typ.Tuple[str, tt.Metadata, 'MetaSource']]:
         """Given a meta file path, yields all item paths that this meta file provides metadata for, along with the
-        metadata itself.
+        metadata itself and the meta source type.
         """
         # Check that the provided path exists and is a file.
         if not os.path.isfile(meta_path):
@@ -196,7 +202,9 @@ class MetaSource(enum.Enum):
         # If the target meta source is not set, then the file name did not match that of any of the meta sources.
         if target_meta_source is None:
             msg = f'Unknown meta file name "{meta_file_name}"'
-            raise Exception(msg)
+            logger.error(msg)
+            # raise Exception(msg)
+            return
 
         # Open the meta file and read as YAML.
         yaml_data = read_yaml_file(meta_path)
@@ -208,6 +216,40 @@ class MetaSource(enum.Enum):
             yield path, metadata, target_meta_source
 
     # @classmethod
-    # def metadata_for_item(cls, item_path: str, item_filter: tt.ItemFilter=None):
-    #     for meta_path, _ in cls.meta_files_from_item(item_path):
-    #         cls.items_from_meta_file(meta_path=meta_path, item_filter=item_filter)
+    # def metadata_for_item(cls
+    #                       , item_path: str
+    #                       , meta_cache: MetadataCache
+    #                       , force: bool=False
+    #                       , item_filter: tt.ItemFilter=None
+    #                       ) -> typ.Iterable[typ.Tuple[str, 'MetaSource', tt.Metadata]]:
+    #     # Normalize item path.
+    #     item_path = os.path.normpath(item_path)
+    #
+    #     if force:
+    #         logger.info(f'Forced fetch of item "{item_path}", defeating cache')
+    #
+    #         # Remove any possible remnants of cache.
+    #         meta_cache.pop(item_path, None)
+    #
+    #     if item_path in meta_cache:
+    #         logger.debug(f'Found item "{item_path}" in cache, using cached results')
+    #
+    #     else:
+    #         logger.debug(f'Item "{item_path}" not found in cache, processing meta files')
+    #         for meta_path, meta_source in cls.meta_files_from_item(item_path):
+    #             if os.path.isfile(meta_path):
+    #                 logger.info(f'Found meta file "{meta_path}" of type {meta_source.name} '
+    #                             f'for item "{item_path}", processing')
+    #                 for ip, md, ms in cls.items_from_meta_file(meta_path=meta_path, item_filter=item_filter):
+    #                     meta_cache.setdefault(ip, {})[ms] = md
+    #             else:
+    #                 logger.debug(f'Meta file "{meta_path}" of type {meta_source.name} '
+    #                              f'does not exist for item "{item_path}", skipping')
+    #
+    #     if item_path in meta_cache:
+    #         for ms, md in meta_cache[item_path].items():
+    #             yield item_path, ms, md
+
+
+def generate_sourcer(*, root_dir: str, item_filter: tt.ItemFilter=None):
+    pass
