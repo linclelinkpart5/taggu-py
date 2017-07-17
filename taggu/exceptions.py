@@ -12,3 +12,7 @@ class AbsoluteSubpath(InvalidSubpath):
 
 class EscapingSubpath(InvalidSubpath):
     pass
+
+
+class NonUniqueFuzzyFileLookup(TagguException):
+    pass
