@@ -1,28 +1,84 @@
 import typing as typ
 import os.path
+import glob
+
+import yaml
 
 import taggu.logging as tl
 import taggu.exceptions as tex
+import taggu.types as tt
 
 logger = tl.get_logger(__name__)
 
 
-CoNormalizer = typ.Callable[[str], typ.Tuple[str, str]]
+def is_well_behaved_file_name(item_file_name: str) -> bool:
+    head, tail = os.path.split(item_file_name)
+
+    # If tail is empty, then either the path was empty, or it ended in a dir separator.
+    # In either case, that would make the name invalid.
+    if not tail:
+        return False
+
+    # If head is not empty, then either the path contained more than one path segment, or was absolute.
+    # In either case, that would make the name invalid.
+    if head:
+        return False
+
+    # If tail is a curdir or pardir item, that is also invalid.
+    if tail == os.path.pardir or tail == os.path.curdir:
+        return False
+
+    return True
 
 
-def gen_normed_root_dir_and_co_norm(*, root_dir: str) -> typ.Tuple[str, CoNormalizer]:
-    # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
-    root_dir = os.path.abspath(os.path.expanduser(root_dir))
+def gen_suffix_item_filter(target_ext: str) -> tt.ItemFilter:
+    def item_filter(abs_item_path: str) -> bool:
+        _, ext = os.path.splitext(abs_item_path)
+        return (os.path.isfile(abs_item_path) and ext == target_ext) or os.path.isdir(abs_item_path)
 
-    def co_norm(rel_sub_path: str) -> typ.Tuple[str, str]:
-        abs_sub_path = os.path.normpath(os.path.join(root_dir, rel_sub_path))
-        rel_sub_path = os.path.relpath(abs_sub_path, start=root_dir)
+    return item_filter
 
-        if rel_sub_path.startswith(os.path.pardir):
-            msg = f'Relative sub path is not anchored at root directory'
-            logger.error(msg)
-            raise tex.InvalidSubpath(msg)
 
-        return rel_sub_path, abs_sub_path
+def fuzzy_file_lookup(*, abs_dir_path: str, prefix_file_name: str) -> str:
+    path = os.path.join(abs_dir_path, prefix_file_name)
+    results = glob.glob('{}*'.format(path))
 
-    return root_dir, co_norm
+    if len(results) != 1:
+        msg = (f'Incorrect number of matches for fuzzy lookup of "{prefix_file_name}" in directory "{abs_dir_path}"; '
+               f'expected: 1, found: {len(results)}')
+        logger.error(msg)
+        raise tex.NonUniqueFuzzyFileLookup(msg)
+
+    return results[0]
+
+
+def read_yaml_file(abs_yaml_file_path: str) -> typ.Any:
+    logger.debug(f'Opening YAML file "{abs_yaml_file_path}"')
+    with open(abs_yaml_file_path) as f:
+        data = yaml.load(f, Loader=yaml.BaseLoader)
+
+    return data
+
+
+def item_discovery(*, abs_dir_path: str, item_filter: tt.ItemFilter=None) -> typ.AbstractSet[str]:
+    """Finds item names in a given directory. These items must pass a filter in order to be selected."""
+    # TODO: Remove, just for testing.
+    if item_filter is None:
+        item_filter = gen_suffix_item_filter('.flac')
+
+    def helper():
+        with os.scandir(abs_dir_path) as it:
+            for item in it:
+                item_name = item.name
+                item_path = os.path.normpath(os.path.join(abs_dir_path, item_name))
+
+                if item_filter is not None:
+                    if item_filter(item_path):
+                        logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
+                        yield item_name
+                    else:
+                        logger.debug(f'Item "{item_name}" failed filter, skipping')
+                else:
+                    yield item_name
+
+    return frozenset(helper())
