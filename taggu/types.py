@@ -1,17 +1,18 @@
 import typing as typ
+import pathlib as pl
 
-ItemFilter = typ.Callable[[str], bool]
+ItemFilter = typ.Callable[[pl.Path], bool]
 
 MetadataKey = typ.NewType('MetadataKey', str)
 MetadataValue = typ.Union[str, typ.Sequence[str]]
 
 Metadata = typ.Mapping[MetadataKey, MetadataValue]
 
-DirGetter = typ.Callable[[str], typ.Iterable[str]]
-Multiplexer = typ.Callable[[typ.Any, str, typ.Optional[ItemFilter]], typ.Iterable[typ.Tuple[str, Metadata]]]
+DirGetter = typ.Callable[[pl.Path], typ.Iterable[pl.Path]]
+Multiplexer = typ.Callable[[typ.Any, pl.Path, typ.Optional[ItemFilter]], typ.Iterable[typ.Tuple[pl.Path, Metadata]]]
 
 
 class MetaSourceSpec(typ.NamedTuple):
-    file_name: str
+    file_name: pl.Path
     dir_getter: DirGetter
     multiplexer: Multiplexer
