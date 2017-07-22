@@ -101,8 +101,14 @@ def generate_discoverer(*
         """Represents sources of metadata for items in a Taggu library.
         The order of entries here is important, it represents the order of overriding (last element overrides previous).
         """
-        ITEM = tt.MetaSourceSpec(file_name=item_meta_file_name, dir_getter=yield_siblings_dir, multiplexer=yield_item_meta_pairs)
-        SELF = tt.MetaSourceSpec(file_name=self_meta_file_name, dir_getter=yield_contains_dir, multiplexer=yield_self_meta_pairs)
+        ITEM = tt.MetaSourceSpec(file_name=item_meta_file_name
+                                 , dir_getter=yield_siblings_dir
+                                 , multiplexer=yield_item_meta_pairs
+                                 )
+        SELF = tt.MetaSourceSpec(file_name=self_meta_file_name
+                                 , dir_getter=yield_contains_dir
+                                 , multiplexer=yield_self_meta_pairs
+                                 )
 
         def __str__(self):
             return '{}.{}'.format(type(self).__name__, self.name)
@@ -112,7 +118,7 @@ def generate_discoverer(*
     class Discoverer:
         @classmethod
         def meta_files_from_item(cls, rel_item_path: str) -> typ.Iterable[str]:
-            """Given an item path, yields all possible meta file paths that could provide immediate metadata for that item.
+            """Given an item path, yields all possible meta file paths that could provide direct metadata for that item.
             This does not verify that any of the resulting meta file paths exist, so appropriate checking is needed.
             """
             for meta_source in MetaSource:
@@ -173,16 +179,8 @@ def generate_discoverer(*
                 yield from cls.items_from_meta_file(rel_meta_path=rel_meta_path)
 
         @classmethod
-        def lookup_items(cls, *, rel_item_paths: typ.Sequence[str], force: bool=False, parents: bool=True):
+        def lookup_items(cls, *, rel_item_paths: typ.Iterable[str], parents: bool = True):
             rel_item_paths, abs_item_paths = zip(*(co_norm(rel_sub_path=rel_item_path) for rel_item_path in rel_item_paths))
-
-            if force:
-                logger.info(f'Forced lookup requested, defeating cache')
-
-                # Remove any possible remnants of cache.
-                for rel_item_path in rel_item_paths:
-                    logger.debug(f'Clearing item "{rel_item_path}" from cache')
-                    meta_cache.pop(rel_item_path, None)
 
             for rel_item_path in rel_item_paths:
                 if rel_item_path in meta_cache:
@@ -199,34 +197,30 @@ def generate_discoverer(*
                             for ip, md in Discoverer.items_from_meta_file(rel_meta_path=rel_meta_path):
                                 meta_cache[ip] = md
                         else:
-                            logger.debug(f'Meta file "{rel_meta_path}" does not exist for item "{rel_item_path}", skipping')
+                            logger.debug(f'Meta file "{rel_meta_path}" does not exist '
+                                         f'for item "{rel_item_path}", skipping')
 
                 yield rel_item_path, meta_cache.setdefault(rel_item_path, {})
 
                 if parents:
                     par_dir = os.path.normpath(os.path.dirname(rel_item_path))
                     if par_dir != rel_item_path:
-                        yield from cls.lookup_items(rel_item_paths=(par_dir,), force=force, parents=parents)
+                        yield from cls.lookup_items(rel_item_paths=(par_dir,), parents=parents)
 
-        # @classmethod
-        # def lookup_item(cls, *, rel_item_path: str, force: bool=False):
-        #     yield from cls.lookup_items(rel_item_paths=(rel_item_path,), force=force)
-        #
-        # @classmethod
-        # def lookup_items_in_dir(cls, *, rel_sub_dir: str, force: bool=False):
-        #     rel_sub_dir, abs_sub_dir = co_norm(rel_sub_path=rel_sub_dir)
-        #
-        #     item_names = th.item_discovery(abs_dir_path=abs_sub_dir, item_filter=item_filter)
-        #
-        #     rel_item_paths = sorted(os.path.normpath(os.path.join(rel_sub_dir, item_name)) for item_name in item_names)
-        #
-        #     yield from cls.lookup_items(rel_item_paths=rel_item_paths, force=force)
+        @classmethod
+        def lookup_item(cls, *, rel_item_path: str, parents: bool=True):
+            yield from cls.lookup_items(rel_item_paths=(rel_item_path,), parents=parents)
+
+        @classmethod
+        def field_for_item(cls, *, rel_item_path: str, field_name: str):
+            pass
 
         # TODO: For full-library spelunk, keep track of visited files.
 
         @classmethod
         def clear_cache(cls):
             meta_cache.clear()
+            logger.info(f'Metadata cache cleared')
 
         @classmethod
         def all_cache_entries(cls):

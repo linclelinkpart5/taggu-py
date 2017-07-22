@@ -1,0 +1,26 @@
+artist:
+  - join:
+    - lookup: artist
+    - ", "
+  - guard:
+    - " feat. "
+    - join:
+      - lookup: feat.artist
+      - ", "
+  - guard:
+    - " remixed by "
+    - join:
+      - lookup: remix.artist
+      - ", "
+  - guard:
+    - " feat. "
+    - join:
+      - lookup: remix.feat.artist
+      - ", "
+
+title:
+  - lookup: title
+  - guard:
+    - "("
+    - lookup: subtitle
+    - ")"
