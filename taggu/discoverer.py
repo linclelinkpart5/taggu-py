@@ -3,16 +3,20 @@ import os.path
 import collections.abc
 import enum
 import pathlib as pl
+import itertools as it
 
 import taggu.types as tt
 import taggu.logging as tl
 import taggu.exceptions as tex
 import taggu.helpers as th
+import taggu.labels as tlb
 
 
 logger = tl.get_logger(__name__)
 
 MetadataCache = typ.MutableMapping[pl.Path, tt.Metadata]
+
+MetadataResolver = typ.Callable[[pl.Path, str], typ.Generator[str, None, None]]
 
 
 def norm(path: pl.Path) -> pl.Path:
@@ -21,9 +25,10 @@ def norm(path: pl.Path) -> pl.Path:
 
 def generate_discoverer(*
                         , root_dir: pl.Path
-                        , item_filter: tt.ItemFilter=None
+                        , media_item_filter: tt.ItemFilter=None
                         , self_meta_file_name: pl.Path=pl.Path('taggu_self.yml')
                         , item_meta_file_name: pl.Path=pl.Path('taggu_item.yml')
+                        , label_ext: tlb.LabelExtractor=tlb.default_label_extractor
                         ):
     # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
     root_dir = root_dir.expanduser().resolve()
@@ -52,7 +57,7 @@ def generate_discoverer(*
         rel_sub_dir_path, abs_sub_dir_path = co_norm(rel_sub_path=rel_sub_dir_path)
 
         # Find eligible item names in this directory.
-        item_names = th.item_discovery(abs_dir_path=abs_sub_dir_path, item_filter=item_filter)
+        item_names = th.item_discovery(abs_dir_path=abs_sub_dir_path, item_filter=media_item_filter)
 
         # File metadata can be either a dictionary or sequence.
         if isinstance(yaml_data, collections.abc.Sequence):
@@ -179,37 +184,117 @@ def generate_discoverer(*
                 yield from cls.items_from_meta_file(rel_meta_path=rel_meta_path)
 
         @classmethod
-        def lookup_items(cls, *, rel_item_paths: typ.Iterable[pl.Path], parents: bool=True):
-            gen = (co_norm(rel_sub_path=rel_item_path) for rel_item_path in rel_item_paths)
+        def cache_item(cls, *, rel_item_path: pl.Path):
+            if rel_item_path in meta_cache:
+                logger.debug(f'Found item "{rel_item_path}" in cache, using cached results')
 
-            for rel_item_path, abs_meta_path in gen:
-                if rel_item_path in meta_cache:
-                    logger.debug(f'Found item "{rel_item_path}" in cache, using cached results')
+            else:
+                logger.debug(f'Item "{rel_item_path}" not found in cache, processing meta files')
+                for rel_meta_path in Discoverer.meta_files_from_item(rel_item_path):
+                    rel_meta_path, abs_meta_path = co_norm(rel_sub_path=rel_meta_path)
 
-                else:
-                    logger.debug(f'Item "{rel_item_path}" not found in cache, processing meta files')
-                    for rel_meta_path in Discoverer.meta_files_from_item(rel_item_path):
-                        rel_meta_path, abs_meta_path = co_norm(rel_sub_path=rel_meta_path)
+                    if abs_meta_path.is_file():
+                        logger.info(f'Found meta file "{rel_meta_path}" for item "{rel_item_path}", processing')
 
-                        if abs_meta_path.is_file():
-                            logger.info(f'Found meta file "{rel_meta_path}" for item "{rel_item_path}", processing')
-
-                            for ip, md in Discoverer.items_from_meta_file(rel_meta_path=rel_meta_path):
-                                meta_cache[ip] = md
-                        else:
-                            logger.debug(f'Meta file "{rel_meta_path}" does not exist '
-                                         f'for item "{rel_item_path}", skipping')
-
-                yield rel_item_path, meta_cache.setdefault(rel_item_path, {})
-
-                if parents:
-                    par_dir = rel_item_path.parent
-                    if par_dir != rel_item_path:
-                        yield from cls.lookup_items(rel_item_paths=(par_dir,), parents=parents)
+                        for ip, md in Discoverer.items_from_meta_file(rel_meta_path=rel_meta_path):
+                            meta_cache[ip] = md
+                    else:
+                        logger.debug(f'Meta file "{rel_meta_path}" does not exist '
+                                     f'for item "{rel_item_path}", skipping')
 
         @classmethod
-        def lookup_item(cls, *, rel_item_path: pl.Path, parents: bool=True):
-            yield from cls.lookup_items(rel_item_paths=(rel_item_path,), parents=parents)
+        def yield_field(cls, *, rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
+            cls.cache_item(rel_item_path=rel_item_path)
+
+            meta_dict = meta_cache.get(rel_item_path, {})
+            if field in meta_dict:
+                value = meta_dict[field]
+
+                if isinstance(value, str):
+                    yield value
+                elif isinstance(value, collections.abc.Sequence):
+                    yield from value
+
+        @classmethod
+        def yield_parental_fields(cls, *,
+                                  rel_item_path: pl.Path,
+                                  field: str,
+                                  item_filter: tt.ItemFilter=None):
+            paths = it.chain((rel_item_path,), rel_item_path.parents)
+
+            potential_sources = ((path, cls.yield_field(rel_item_path=path, field=field)) for path in paths)
+
+            found = False
+            for path, potential_source in potential_sources:
+                if item_filter is not None and not item_filter(path):
+                    continue
+
+                for item in potential_source:
+                    yield item
+
+                    # If this item yielded at least one element, it was a match.
+                    # Set the flag to exit.
+                    found = True
+
+                if found:
+                    return
+
+########################################################################################################################
+# Resolver generators
+########################################################################################################################
+
+        @classmethod
+        def gen_self_resolver(cls) -> MetadataResolver:
+            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
+                yield from cls.yield_field(rel_item_path=rel_item_path, field=field)
+
+            return resolver
+
+        @classmethod
+        def gen_parent_resolver(cls) -> MetadataResolver:
+            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
+                yield from cls.yield_parental_fields(rel_item_path=rel_item_path, field=field, item_filter=None)
+
+            return resolver
+
+        @classmethod
+        def gen_label_parent_resolver(cls, label: str) -> MetadataResolver:
+            def label_filter(path: pl.Path) -> bool:
+                # Gracefully degrade into allowing all if a label extractor is not provided.
+                if not label_ext:
+                    return True
+
+                return label_ext(path) == label
+
+            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
+                yield from cls.yield_parental_fields(rel_item_path=rel_item_path, field=field, item_filter=label_filter)
+
+            return resolver
+
+########################################################################################################################
+# Client functions
+########################################################################################################################
+
+        @classmethod
+        def yield_field_for_item(cls, *, rel_item_path: pl.Path, field: str, resolver: typ.Any=None):
+            cls.cache_item(rel_item_path=rel_item_path)
+
+            # Work on simple parent lookup for now.
+            meta_dict = meta_cache.get(rel_item_path, {})
+            if field in meta_dict:
+                yield meta_dict[field]
+                return
+
+            # If not found, leave it up to resolver.
+            # yield from resolver(rel_item_path=rel_item_path)
+
+            for parent in rel_item_path.parents:
+                cls.cache_item(rel_item_path=parent)
+
+                meta_dict = meta_cache.get(parent, {})
+                if field in meta_dict:
+                    yield meta_dict[field]
+                    return
 
         # TODO: For full-library spelunk, keep track of visited files.
 
