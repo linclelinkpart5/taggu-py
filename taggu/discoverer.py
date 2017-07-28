@@ -29,6 +29,7 @@ def generate_discoverer(*
                         , self_meta_file_name: pl.Path=pl.Path('taggu_self.yml')
                         , item_meta_file_name: pl.Path=pl.Path('taggu_item.yml')
                         , label_ext: tlb.LabelExtractor=tlb.default_label_extractor
+                        , media_item_sort_key: typ.Callable[[pl.Path], typ.Any]=None
                         ):
     # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
     root_dir = root_dir.expanduser().resolve()
@@ -57,7 +58,8 @@ def generate_discoverer(*
         rel_sub_dir_path, abs_sub_dir_path = co_norm(rel_sub_path=rel_sub_dir_path)
 
         # Find eligible item names in this directory.
-        item_names = th.item_discovery(abs_dir_path=abs_sub_dir_path, item_filter=media_item_filter)
+        item_names: typ.AbstractSet[str] = th.item_discovery(abs_dir_path=abs_sub_dir_path,
+                                                             item_filter=media_item_filter)
 
         # File metadata can be either a dictionary or sequence.
         if isinstance(yaml_data, collections.abc.Sequence):
@@ -69,7 +71,7 @@ def generate_discoverer(*
                                f'and {len(yaml_data)} metadata block(s)'
                                )
 
-            for item_name, meta_block in zip(sorted(item_names), yaml_data):
+            for item_name, meta_block in zip(sorted(item_names, key=media_item_sort_key), yaml_data):
                 rel_item_path = rel_sub_dir_path / item_name
                 yield rel_item_path, meta_block
 
@@ -173,12 +175,13 @@ def generate_discoverer(*
             yield from multiplexer(yaml_data, rel_containing_dir)
 
         @classmethod
-        def meta_files_from_items(cls, rel_item_paths: typ.Iterable[pl.Path]) -> typ.Iterable[pl.Path]:
+        def meta_files_from_items(cls, rel_item_paths: typ.Iterable[pl.Path]) \
+                -> typ.Iterable[pl.Path]:
             for rel_item_path in rel_item_paths:
                 yield from cls.meta_files_from_item(rel_item_path=rel_item_path)
 
         @classmethod
-        def items_from_meta_files(cls, rel_meta_paths: typ.Iterable[pl.Path])\
+        def items_from_meta_files(cls, rel_meta_paths: typ.Iterable[pl.Path]) \
                 -> typ.Iterable[typ.Tuple[pl.Path, tt.Metadata]]:
             for rel_meta_path in rel_meta_paths:
                 yield from cls.items_from_meta_file(rel_meta_path=rel_meta_path)
@@ -202,13 +205,17 @@ def generate_discoverer(*
                         logger.debug(f'Meta file "{rel_meta_path}" does not exist '
                                      f'for item "{rel_item_path}", skipping')
 
+########################################################################################################################
+# Field yielders
+########################################################################################################################
+
         @classmethod
-        def yield_field(cls, *, rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
+        def yield_field(cls, *, rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
             cls.cache_item(rel_item_path=rel_item_path)
 
             meta_dict = meta_cache.get(rel_item_path, {})
-            if field in meta_dict:
-                value = meta_dict[field]
+            if field_name in meta_dict:
+                value = meta_dict[field_name]
 
                 if isinstance(value, str):
                     yield value
@@ -216,28 +223,58 @@ def generate_discoverer(*
                     yield from value
 
         @classmethod
-        def yield_parental_fields(cls, *,
-                                  rel_item_path: pl.Path,
-                                  field: str,
-                                  item_filter: tt.ItemFilter=None):
-            paths = it.chain((rel_item_path,), rel_item_path.parents)
+        def yield_parent_fields(cls, *,
+                                rel_item_path: pl.Path,
+                                field_name: str,
+                                label: typ.Optional[str]=None,
+                                max_distance: typ.Optional[int]=None):
+            paths = rel_item_path.parents
 
-            potential_sources = ((path, cls.yield_field(rel_item_path=path, field=field)) for path in paths)
+            if max_distance is not None and max_distance >= 0:
+                paths = paths[:max_distance]
+
+            comp = None
+            if label is not None and label_ext is not None:
+                def comp(p: pl.Path) -> bool:
+                    return label_ext(p) == label
 
             found = False
-            for path, potential_source in potential_sources:
-                if item_filter is not None and not item_filter(path):
+            for path in paths:
+                if comp is not None and not comp(path):
                     continue
 
-                for item in potential_source:
-                    yield item
-
-                    # If this item yielded at least one element, it was a match.
-                    # Set the flag to exit.
+                for field_val in cls.yield_field(rel_item_path=path, field_name=field_name):
+                    yield field_val
                     found = True
 
                 if found:
                     return
+
+        @classmethod
+        def yield_child_fields(cls, *,
+                               rel_item_path: pl.Path,
+                               field_name: str,
+                               label: typ.Optional[str]=None,
+                               max_distance: typ.Optional[int]=None):
+            rel_item_path, abs_item_path = co_norm(rel_sub_path=rel_item_path)
+
+            # Only try and process children if this item is a directory.
+            if abs_item_path.is_dir():
+                child_item_names = th.item_discovery(abs_dir_path=abs_item_path, item_filter=media_item_filter)
+                for child_item_name in sorted(child_item_names, key=media_item_sort_key):
+                    rel_child_path = rel_item_path / child_item_name
+                    field_vals = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name)
+
+                    found = False
+                    for field_val in field_vals:
+                        yield field_val
+                        found = True
+
+                    if not found:
+                        yield from cls.yield_child_fields(rel_item_path=rel_child_path,
+                                                          field_name=field_name,
+                                                          label=label,
+                                                          max_distance=max_distance)
 
 ########################################################################################################################
 # Resolver generators
@@ -245,58 +282,21 @@ def generate_discoverer(*
 
         @classmethod
         def gen_self_resolver(cls) -> MetadataResolver:
-            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
-                yield from cls.yield_field(rel_item_path=rel_item_path, field=field)
+            def resolver(rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
+                yield from cls.yield_field(rel_item_path=rel_item_path, field_name=field_name)
 
             return resolver
 
         @classmethod
         def gen_parent_resolver(cls) -> MetadataResolver:
-            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
-                yield from cls.yield_parental_fields(rel_item_path=rel_item_path, field=field, item_filter=None)
-
-            return resolver
-
-        @classmethod
-        def gen_label_parent_resolver(cls, label: str) -> MetadataResolver:
-            def label_filter(path: pl.Path) -> bool:
-                # Gracefully degrade into allowing all if a label extractor is not provided.
-                if not label_ext:
-                    return True
-
-                return label_ext(path) == label
-
-            def resolver(rel_item_path: pl.Path, field: str) -> typ.Generator[str, None, None]:
-                yield from cls.yield_parental_fields(rel_item_path=rel_item_path, field=field, item_filter=label_filter)
+            def resolver(rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
+                yield from cls.yield_parent_fields(rel_item_path=rel_item_path, field_name=field_name)
 
             return resolver
 
 ########################################################################################################################
-# Client functions
+# Cache manipulation
 ########################################################################################################################
-
-        @classmethod
-        def yield_field_for_item(cls, *, rel_item_path: pl.Path, field: str, resolver: typ.Any=None):
-            cls.cache_item(rel_item_path=rel_item_path)
-
-            # Work on simple parent lookup for now.
-            meta_dict = meta_cache.get(rel_item_path, {})
-            if field in meta_dict:
-                yield meta_dict[field]
-                return
-
-            # If not found, leave it up to resolver.
-            # yield from resolver(rel_item_path=rel_item_path)
-
-            for parent in rel_item_path.parents:
-                cls.cache_item(rel_item_path=parent)
-
-                meta_dict = meta_cache.get(parent, {})
-                if field in meta_dict:
-                    yield meta_dict[field]
-                    return
-
-        # TODO: For full-library spelunk, keep track of visited files.
 
         @classmethod
         def clear_cache(cls):

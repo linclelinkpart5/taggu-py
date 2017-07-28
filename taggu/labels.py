@@ -1,10 +1,9 @@
 import typing as typ
 import pathlib as pl
-import os.path
 
 LabelExtractor = typ.Callable[[pl.Path], str]
 
 
-def default_label_extractor(item_file_name: pl.Path) -> str:
-    item_stub, _ = os.path.splitext(item_file_name)
-    return item_stub.rstrip('0123456789')
+def default_label_extractor(rel_item_path: pl.Path) -> str:
+    item_stem = rel_item_path.stem
+    return item_stem.rstrip('0123456789')

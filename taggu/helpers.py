@@ -65,22 +65,47 @@ def read_yaml_file(abs_yaml_file_path: pl.Path) -> typ.Any:
 def item_discovery(*
                    , abs_dir_path: pl.Path
                    , item_filter: typ.Callable[[pl.Path], bool]=None
-                   ) -> typ.AbstractSet[pl.Path]:
+                   ) -> typ.AbstractSet[str]:
     """Finds item names in a given directory. These items must pass a filter in order to be selected."""
     logger.info(f'Looking for valid items in directory "{abs_dir_path}"')
 
     def helper():
-        for item in abs_dir_path.iterdir():
-            item_name = item.name
+        # Make sure the path is a directory.
+        # If not, we yield nothing.
+        if abs_dir_path.is_dir():
+            for item in abs_dir_path.iterdir():
+                item_name = item.name
 
-            if item_filter is not None:
-                if item_filter(item):
-                    logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
-                    yield item_name
+                if item_filter is not None:
+                    if item_filter(item):
+                        logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
+                        yield item_name
+                    else:
+                        logger.debug(f'Item "{item_name}" failed filter, skipping')
                 else:
-                    logger.debug(f'Item "{item_name}" failed filter, skipping')
-            else:
-                logger.debug(f'Marking item "{item_name}" as eligible')
-                yield item_name
+                    logger.debug(f'Marking item "{item_name}" as eligible')
+                    yield item_name
 
     return frozenset(helper())
+
+
+def from_first_nonempty(iterables: typ.Iterable[typ.Iterable[typ.Any]]) -> typ.Generator[typ.Any, None, None]:
+    """Process iterables until one is found that is non-empty. Yields all elements in that single iterable, and then
+    completes. Any remaining iterables are left untouched.
+    """
+    for iterable in iterables:
+        # Flag to test if the following for loop runs at least one loop.
+        count = 0
+        for count, elem in enumerate(iterable, start=1):
+            # If we get in here, this current iterable had at least one element.
+            yield elem
+
+        # If the enumerated value ever goes above zero, at least one element was found in the current iterable.
+        # Return and do not process the others.
+        if count > 0:
+            return
+
+
+def yield_self_and_parents(path: pl.Path) -> typ.Generator[pl.Path, None, None]:
+    yield path
+    yield from path.parents
