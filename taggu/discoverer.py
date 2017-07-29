@@ -4,6 +4,8 @@ import collections.abc
 import enum
 import pathlib as pl
 import itertools as it
+import copy
+import concurrent.futures as cf
 
 import taggu.types as tt
 import taggu.logging as tl
@@ -41,6 +43,11 @@ def generate_discoverer(*
         abs_sub_path = norm(root_dir / rel_sub_path)
         rel_sub_path = abs_sub_path.relative_to(root_dir)
         return rel_sub_path, abs_sub_path
+
+    def sorted_item_discovery(*,
+                              abs_dir_path: pl.Path) -> typ.Sequence[str]:
+        return sorted(th.item_discovery(abs_dir_path=abs_dir_path, item_filter=media_item_filter),
+                      key=media_item_sort_key)
 
     def yield_contains_dir(rel_sub_path: pl.Path) -> typ.Iterable[pl.Path]:
         rel_sub_path, abs_sub_path = co_norm(rel_sub_path=rel_sub_path)
@@ -206,11 +213,18 @@ def generate_discoverer(*
                                      f'for item "{rel_item_path}", skipping')
 
 ########################################################################################################################
-# Field yielders
+#   Field yielders
 ########################################################################################################################
 
         @classmethod
-        def yield_field(cls, *, rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
+        def yield_field(cls, *,
+                        rel_item_path: pl.Path,
+                        field_name: str,
+                        labels: typ.Optional[typ.Collection[str]]=None) -> typ.Generator[str, None, None]:
+            if labels is not None and label_ext is not None:
+                if label_ext(rel_item_path) not in labels:
+                    return
+
             cls.cache_item(rel_item_path=rel_item_path)
 
             meta_dict = meta_cache.get(rel_item_path, {})
@@ -226,24 +240,16 @@ def generate_discoverer(*
         def yield_parent_fields(cls, *,
                                 rel_item_path: pl.Path,
                                 field_name: str,
-                                label: typ.Optional[str]=None,
-                                max_distance: typ.Optional[int]=None):
+                                labels: typ.Optional[typ.Collection[str]]=None,
+                                max_distance: typ.Optional[int]=None) -> typ.Generator[str, None, None]:
             paths = rel_item_path.parents
 
             if max_distance is not None and max_distance >= 0:
                 paths = paths[:max_distance]
 
-            comp = None
-            if label is not None and label_ext is not None:
-                def comp(p: pl.Path) -> bool:
-                    return label_ext(p) == label
-
             found = False
             for path in paths:
-                if comp is not None and not comp(path):
-                    continue
-
-                for field_val in cls.yield_field(rel_item_path=path, field_name=field_name):
+                for field_val in cls.yield_field(rel_item_path=path, field_name=field_name, labels=labels):
                     yield field_val
                     found = True
 
@@ -254,48 +260,35 @@ def generate_discoverer(*
         def yield_child_fields(cls, *,
                                rel_item_path: pl.Path,
                                field_name: str,
-                               label: typ.Optional[str]=None,
-                               max_distance: typ.Optional[int]=None):
-            rel_item_path, abs_item_path = co_norm(rel_sub_path=rel_item_path)
+                               labels: typ.Optional[typ.Collection[str]]=None,
+                               max_distance: typ.Optional[int]=None) -> typ.Generator[str, None, None]:
+            # TODO: This function has issues with cyclic folder hierarchies, fix.
+            def helper(rip: pl.Path, md: typ.Optional[int]):
+                rip, aip = co_norm(rel_sub_path=rip)
 
-            # Only try and process children if this item is a directory.
-            if abs_item_path.is_dir():
-                child_item_names = th.item_discovery(abs_dir_path=abs_item_path, item_filter=media_item_filter)
-                for child_item_name in sorted(child_item_names, key=media_item_sort_key):
-                    rel_child_path = rel_item_path / child_item_name
-                    field_vals = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name)
+                # Only try and process children if this item is a directory.
+                if aip.is_dir() and (md is None or md > 0):
+                    child_item_names = th.item_discovery(abs_dir_path=aip, item_filter=media_item_filter)
 
-                    found = False
-                    for field_val in field_vals:
-                        yield field_val
-                        found = True
+                    for child_item_name in sorted(child_item_names, key=media_item_sort_key):
+                        rel_child_path = rip / child_item_name
 
-                    if not found:
-                        yield from cls.yield_child_fields(rel_item_path=rel_child_path,
-                                                          field_name=field_name,
-                                                          label=label,
-                                                          max_distance=max_distance)
+                        found = False
+                        fields = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name, labels=labels)
 
-########################################################################################################################
-# Resolver generators
-########################################################################################################################
+                        for field in fields:
+                            yield field
+                            found = True
 
-        @classmethod
-        def gen_self_resolver(cls) -> MetadataResolver:
-            def resolver(rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
-                yield from cls.yield_field(rel_item_path=rel_item_path, field_name=field_name)
+                        if not found:
+                            next_max_distance = md - 1 if md is not None else None
 
-            return resolver
+                            yield from helper(rel_child_path, next_max_distance)
 
-        @classmethod
-        def gen_parent_resolver(cls) -> MetadataResolver:
-            def resolver(rel_item_path: pl.Path, field_name: str) -> typ.Generator[str, None, None]:
-                yield from cls.yield_parent_fields(rel_item_path=rel_item_path, field_name=field_name)
-
-            return resolver
+            yield from helper(rel_item_path, max_distance)
 
 ########################################################################################################################
-# Cache manipulation
+#   Cache manipulation
 ########################################################################################################################
 
         @classmethod
@@ -304,7 +297,23 @@ def generate_discoverer(*
             logger.info(f'Metadata cache cleared')
 
         @classmethod
-        def all_cache_entries(cls):
-            return meta_cache
+        def clear_cache_branch(cls, paths: typ.Collection[pl.Path]):
+            paths = frozenset(paths)
+
+            def to_delete(p: pl.Path) -> bool:
+                p_set = frozenset({p, *p.parents})
+                return bool(p_set.intersection(paths))
+
+            keys_to_delete = {key for key in meta_cache.keys() if to_delete(key)}
+            for key in keys_to_delete:
+                meta_cache.pop(key, None)
+
+        @classmethod
+        def cache_copy(cls):
+            return copy.copy(meta_cache)
+
+        @classmethod
+        def cache_deepcopy(cls):
+            return copy.deepcopy(meta_cache)
 
     return Discoverer

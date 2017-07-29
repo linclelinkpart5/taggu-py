@@ -57,6 +57,7 @@ def fuzzy_file_lookup(*, abs_dir_path: pl.Path, prefix_file_name: str) -> pl.Pat
 def read_yaml_file(abs_yaml_file_path: pl.Path) -> typ.Any:
     logger.debug(f'Opening YAML file "{abs_yaml_file_path}"')
     with abs_yaml_file_path.open() as f:
+        # TODO: Need to handle nulls as nulls, not as strings.
         data = yaml.load(f, Loader=yaml.BaseLoader)
 
     return data
@@ -69,11 +70,15 @@ def item_discovery(*
     """Finds item names in a given directory. These items must pass a filter in order to be selected."""
     logger.info(f'Looking for valid items in directory "{abs_dir_path}"')
 
+    count = 0
+
     def helper():
         # Make sure the path is a directory.
         # If not, we yield nothing.
+        nonlocal count
         if abs_dir_path.is_dir():
             for item in abs_dir_path.iterdir():
+                count += 1
                 item_name = item.name
 
                 if item_filter is not None:
@@ -86,10 +91,13 @@ def item_discovery(*
                     logger.debug(f'Marking item "{item_name}" as eligible')
                     yield item_name
 
-    return frozenset(helper())
+    vals = frozenset(helper())
+    logger.info(f'Found {pluralize(len(vals), "eligible item")} out of {pluralize(count, "possible item")} '
+                f'in directory "{abs_dir_path}"')
+    return vals
 
 
-def from_first_nonempty(iterables: typ.Iterable[typ.Iterable[typ.Any]]) -> typ.Generator[typ.Any, None, None]:
+def from_first_nonempty(*iterables: typ.Iterable[typ.Any]) -> typ.Generator[typ.Any, None, None]:
     """Process iterables until one is found that is non-empty. Yields all elements in that single iterable, and then
     completes. Any remaining iterables are left untouched.
     """
@@ -104,6 +112,16 @@ def from_first_nonempty(iterables: typ.Iterable[typ.Iterable[typ.Any]]) -> typ.G
         # Return and do not process the others.
         if count > 0:
             return
+
+
+def pluralize(n: int, single: str, plural: typ.Optional[str]=None) -> str:
+    if abs(n) == 1:
+        return f'{n} {single}'
+
+    if plural is None:
+        plural = f'{single}s'
+
+    return f'{n} {plural}'
 
 
 def yield_self_and_parents(path: pl.Path) -> typ.Generator[pl.Path, None, None]:
