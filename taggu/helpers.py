@@ -124,6 +124,17 @@ def pluralize(n: int, single: str, plural: typ.Optional[str]=None) -> str:
     return f'{n} {plural}'
 
 
+T = typ.TypeVar('T')
+
+
+def dedupe(iterable: typ.Iterable[T]) -> typ.Generator[T, None, None]:
+    seen = set()
+    for elem in iterable:
+        if elem not in seen:
+            yield elem
+            seen.add(elem)
+
+
 def yield_self_and_parents(path: pl.Path) -> typ.Generator[pl.Path, None, None]:
     yield path
     yield from path.parents

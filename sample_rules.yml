@@ -21,6 +21,6 @@ artist:
 title:
   - lookup: title
   - guard:
-    - "("
+    - " ("
     - lookup: subtitle
     - ")"
