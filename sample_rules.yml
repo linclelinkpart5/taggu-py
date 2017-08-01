@@ -1,26 +1,35 @@
 artist:
+  - 'ARTIST: '
   - join:
-    - lookup: artist
+    - lookup:
+      - artist  # Field name (required)
+      - parent  # Resolution style (optional, default: parent)
+      - ~       # Target label (optional, default: ~)
     - ", "
   - guard:
     - " feat. "
     - join:
-      - lookup: feat.artist
+      - lookup: feat.artist # Any way to make this count as "- lookup: [feat.artist]"?
       - ", "
   - guard:
     - " remixed by "
     - join:
-      - lookup: remix.artist
+      - lookup:
+        - remix.artist
       - ", "
   - guard:
     - " feat. "
     - join:
-      - lookup: remix.feat.artist
+      - lookup:
+        - remix.feat.artist
       - ", "
 
 title:
-  - lookup: title
+  - 'TITLE: '
+  - lookup:
+    - title
   - guard:
     - " ("
-    - lookup: subtitle
+    - lookup:
+      - subtitle
     - ")"

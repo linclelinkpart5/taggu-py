@@ -178,6 +178,18 @@ def first(*vals: T) -> typ.Optional[T]:
 
     return None
 
+
+def guard(*vals: T) -> typ.Optional[str]:
+    ret = None
+    for val in vals:
+        if bool(val):
+            if ret is None:
+                ret = ''
+            ret += str(val)
+        else:
+            return None
+    return ret
+
 ########################################################################################################################
 #   String manipulation
 ########################################################################################################################
