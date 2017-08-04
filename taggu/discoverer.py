@@ -6,6 +6,7 @@ import pathlib as pl
 import itertools as it
 import copy
 import concurrent.futures as cf
+import abc
 
 import taggu.types as tt
 import taggu.logging as tl
@@ -21,6 +22,26 @@ MetadataCache = typ.MutableMapping[pl.Path, tt.Metadata]
 MetadataResolver = typ.Callable[[pl.Path, str], typ.Generator[str, None, None]]
 
 
+class ItemContext(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def yield_field(cls, *, field_name: str, labels: typ.Optional[typ.Collection[str]]=None) \
+            -> typ.Generator[str, None, None]:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def yield_parent_fields(cls, *, field_name: str, labels: typ.Optional[typ.Collection[str]]=None) \
+            -> typ.Generator[str, None, None]:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def yield_child_fields(cls, *, field_name: str, labels: typ.Optional[typ.Collection[str]]=None) \
+            -> typ.Generator[str, None, None]:
+        pass
+
+
 def norm(path: pl.Path) -> pl.Path:
     return pl.Path(os.path.normpath(path))
 
@@ -32,7 +53,7 @@ def generate_discoverer(*
                         , item_meta_file_name: pl.Path=pl.Path('taggu_item.yml')
                         , label_ext: tlb.LabelExtractor=tlb.default_label_extractor
                         , media_item_sort_key: typ.Callable[[pl.Path], typ.Any]=None
-                        ):
+                        ) -> typ.Type['Discoverer']:
     # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
     root_dir = root_dir.expanduser().resolve()
 
@@ -43,11 +64,6 @@ def generate_discoverer(*
         abs_sub_path = norm(root_dir / rel_sub_path)
         rel_sub_path = abs_sub_path.relative_to(root_dir)
         return rel_sub_path, abs_sub_path
-
-    def sorted_item_discovery(*,
-                              abs_dir_path: pl.Path) -> typ.Sequence[str]:
-        return sorted(th.item_discovery(abs_dir_path=abs_dir_path, item_filter=media_item_filter),
-                      key=media_item_sort_key)
 
     def yield_contains_dir(rel_sub_path: pl.Path) -> typ.Iterable[pl.Path]:
         rel_sub_path, abs_sub_path = co_norm(rel_sub_path=rel_sub_path)
@@ -315,5 +331,44 @@ def generate_discoverer(*
         @classmethod
         def cache_deepcopy(cls):
             return copy.deepcopy(meta_cache)
+
+########################################################################################################################
+#   Item contexts
+########################################################################################################################
+
+        @classmethod
+        def generate_item_context(cls, *, rel_item_path: pl.Path) -> typ.Type[ItemContext]:
+            rel_item_path, abs_item_path = co_norm(rel_sub_path=rel_item_path)
+            discoverer = cls
+
+            class IC(ItemContext):
+                @classmethod
+                def yield_field(cls, *,
+                                field_name: str,
+                                labels: typ.Optional[typ.Collection[str]]=None) \
+                        -> typ.Generator[str, None, None]:
+                    yield from discoverer.yield_field(rel_item_path=rel_item_path,
+                                                      field_name=field_name,
+                                                      labels=labels)
+
+                @classmethod
+                def yield_parent_fields(cls, *,
+                                        field_name: str,
+                                        labels: typ.Optional[typ.Collection[str]]=None) \
+                        -> typ.Generator[str, None, None]:
+                    yield from discoverer.yield_parent_fields(rel_item_path=rel_item_path,
+                                                              field_name=field_name,
+                                                              labels=labels)
+
+                @classmethod
+                def yield_child_fields(cls, *,
+                                       field_name: str,
+                                       labels: typ.Optional[typ.Collection[str]]=None) \
+                        -> typ.Generator[str, None, None]:
+                    yield from discoverer.yield_child_fields(rel_item_path=rel_item_path,
+                                                             field_name=field_name,
+                                                             labels=labels)
+
+            return IC
 
     return Discoverer

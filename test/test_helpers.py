@@ -34,3 +34,7 @@ class TestHelpers(unittest.TestCase):
 
         s = th.pluralize(n=-2, single='entry', plural='entries')
         self.assertEqual(s, '-2 entries')
+
+
+if __name__ == '__main__':
+    unittest.main()
