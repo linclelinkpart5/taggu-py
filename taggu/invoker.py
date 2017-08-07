@@ -1,5 +1,6 @@
 import typing as typ
 import itertools as it
+import functools as ft
 
 import taggu.exceptions as tex
 
@@ -9,6 +10,10 @@ class TooManyArgsException(tex.TagguException):
 
 
 class NotEnoughArgsException(tex.TagguException):
+    pass
+
+
+class InvalidArgTypeException(tex.TagguException):
     pass
 
 
@@ -52,3 +57,43 @@ def normalize_arg_sequence(args: typ.Sequence, desired_len: int, def_vals: typ.S
     assert num_needed_defs > 0
 
     return tuple(it.chain(args, def_vals[-num_needed_defs:]))
+
+
+def vt_deco_gen(types: typ.Iterable[typ.Union[typ.Type, typ.Sequence[typ.Type]]], more_ok: bool):
+    def deco(func: typ.Callable) -> typ.Callable:
+        def wrapped(*args: typ.Any) -> typ.Any:
+            if not validate_types(args=args, types=types, more_ok=more_ok):
+                raise InvalidArgTypeException()
+
+            return func(*args)
+
+        return wrapped
+
+    return deco
+
+
+def na_deco_gen(desired_len: int, def_vals: typ.Sequence=()):
+    def deco(func: typ.Callable) -> typ.Callable:
+        def wrapped(*args: typ.Any) -> typ.Any:
+            args = normalize_arg_sequence(args=args, desired_len=desired_len, def_vals=def_vals)
+            return func(*args)
+
+        return wrapped
+
+    return deco
+
+########################################################################################################################
+#   List manipulation
+########################################################################################################################
+
+
+@vt_deco_gen(types=it.repeat((int, str)), more_ok=True)
+def list_(*args):
+    return tuple(args)
+
+
+@na_deco_gen(desired_len=3, def_vals=('parent', None))
+@vt_deco_gen(types=(str, str, (str, type(None))), more_ok=False)
+def lookup(*args):
+    print(len(args))
+    print(args)

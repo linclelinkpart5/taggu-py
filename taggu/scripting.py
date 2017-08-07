@@ -7,6 +7,22 @@ import numbers as num
 
 import taggu.helpers as th
 
+T = typ.TypeVar('T')
+
+
+class TagguTypeDef(typ.NamedTuple):
+    name: str
+    type: typ.Type[T]
+    to_str: typ.Callable[[T], str]
+    from_str: typ.Callable[[str], T]
+    # errors: typ.Sequence[typ.Type[Exception]]
+
+
+def str_to_bool(s: str) -> bool:
+    yeses = {'yes', 'true', 'y', '1'}
+
+    return s.casefold() in yeses
+
 
 class BaseTagguType(enum.Enum):
     STRING = str
