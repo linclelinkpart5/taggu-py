@@ -46,33 +46,39 @@ MetadataPairGen = typ.Generator[MetadataPair, None, None]
 class LibraryContext(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def co_norm(cls, *, rel_sub_path: pl.Path) -> typ.Tuple[pl.Path, pl.Path]:
-        # Needs access to root_dir!
+    def get_root_dir(cls) -> pl.Path:
         pass
 
     @classmethod
     @abc.abstractmethod
-    def item_names_in_dir(cls, *, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
-        # Needs access to media_item_filter!
+    def get_media_item_filter(cls) -> typ.Optional[ItemFilter]:
         pass
 
     @classmethod
     @abc.abstractmethod
-    def sort_item_names(cls, *, item_names: typ.Iterable[str]) -> typ.Sequence[str]:
-        # Needs access to media_item_sort_key!
+    def get_media_item_sort_key(cls) -> typ.Optional[ItemSortKey]:
         pass
 
     @classmethod
     @abc.abstractmethod
     def get_item_meta_file_name(cls) -> str:
-        # Needs access to item_meta_file_name!
         pass
 
     @classmethod
     @abc.abstractmethod
     def get_self_meta_file_name(cls) -> str:
-        # Needs access to self_meta_file_name!
         pass
+
+    @classmethod
+    def co_norm(cls, *, rel_sub_path: pl.Path) -> typ.Tuple[pl.Path, pl.Path]:
+        """Normalizes a relative sub path with respect to the enclosed root directory.
+        Returns a tuple of the re-normalized relative sub path and the absolute sub path.
+        """
+        root_dir = cls.get_root_dir()
+        path = root_dir / rel_sub_path
+        abs_sub_path = pl.Path(os.path.normpath(path))
+        rel_sub_path = abs_sub_path.relative_to(root_dir)
+        return rel_sub_path, abs_sub_path
 
     @classmethod
     def yield_contains_dir(cls, *, rel_sub_path: pl.Path) -> typ.Generator[pl.Path, None, None]:
@@ -102,6 +108,46 @@ class LibraryContext(abc.ABC):
 
         abs_found_path = results[0]
         return abs_found_path.name
+
+    @classmethod
+    def item_names_in_dir(cls, *, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
+        """Finds item names in a given directory. These items must pass a filter in order to be selected."""
+        rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
+
+        logger.info(f'Looking for valid items in directory "{rel_sub_dir_path}"')
+
+        count = 0
+
+        media_item_filter = cls.get_media_item_filter()
+
+        def helper():
+            # Make sure the path is a directory.
+            # If not, we yield nothing.
+            nonlocal count
+            if abs_sub_dir_path.is_dir():
+                for item in abs_sub_dir_path.iterdir():
+                    count += 1
+                    item_name = item.name
+
+                    if media_item_filter is not None:
+                        if media_item_filter(item):
+                            logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
+                            yield item_name
+                        else:
+                            logger.debug(f'Item "{item_name}" failed filter, skipping')
+                    else:
+                        logger.debug(f'Marking item "{item_name}" as eligible')
+                        yield item_name
+
+        vals = frozenset(helper())
+        logger.info(f'Found {th.pluralize(len(vals), "eligible item")} out of {count} '
+                    f'in directory "{rel_sub_dir_path}"')
+        return vals
+
+    @classmethod
+    def sort_item_names(cls, *, item_names: typ.Iterable[str]) -> typ.Sequence[str]:
+        media_item_sort_key = cls.get_media_item_sort_key()
+        return tuple(sorted(iterable=item_names, key=media_item_sort_key))
 
     @classmethod
     def yield_item_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
@@ -169,55 +215,12 @@ def gen_library_ctx(*,
                     self_meta_file_name: str='taggu_self.yml',
                     item_meta_file_name: str='taggu_item.yml') -> LibraryContext:
     # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
-    root_dir = root_dir.expanduser().resolve()
+    root_dir = pl.Path(os.path.abspath(os.path.expanduser(root_dir)))
 
     class LC(LibraryContext):
         @classmethod
-        def co_norm(cls, *, rel_sub_path: pl.Path) -> typ.Tuple[pl.Path, pl.Path]:
-            """Normalizes a relative sub path with respect to the enclosed root directory.
-            Returns a tuple of the re-normalized relative sub path and the absolute sub path.
-            """
-            path = root_dir / rel_sub_path
-            abs_sub_path = pl.Path(os.path.normpath(path))
-            rel_sub_path = abs_sub_path.relative_to(root_dir)
-            return rel_sub_path, abs_sub_path
-
-        @classmethod
-        def item_names_in_dir(cls, *, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
-            """Finds item names in a given directory. These items must pass a filter in order to be selected."""
-            rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
-
-            logger.info(f'Looking for valid items in directory "{rel_sub_dir_path}"')
-
-            count = 0
-
-            def helper():
-                # Make sure the path is a directory.
-                # If not, we yield nothing.
-                nonlocal count
-                if abs_sub_dir_path.is_dir():
-                    for item in abs_sub_dir_path.iterdir():
-                        count += 1
-                        item_name = item.name
-
-                        if media_item_filter is not None:
-                            if media_item_filter(item):
-                                logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
-                                yield item_name
-                            else:
-                                logger.debug(f'Item "{item_name}" failed filter, skipping')
-                        else:
-                            logger.debug(f'Marking item "{item_name}" as eligible')
-                            yield item_name
-
-            vals = frozenset(helper())
-            logger.info(f'Found {th.pluralize(len(vals), "eligible item")} out of {count} '
-                        f'in directory "{rel_sub_dir_path}"')
-            return vals
-
-        @classmethod
-        def sort_item_names(cls, *, item_names: typ.Iterable[str]) -> typ.Sequence[str]:
-            return tuple(sorted(iterable=item_names, key=media_item_sort_key))
+        def get_root_dir(cls) -> pl.Path:
+            return root_dir
 
         @classmethod
         def get_item_meta_file_name(cls) -> str:
@@ -226,6 +229,14 @@ def gen_library_ctx(*,
         @classmethod
         def get_self_meta_file_name(cls) -> str:
             return self_meta_file_name
+
+        @classmethod
+        def get_media_item_filter(cls) -> typ.Optional[ItemFilter]:
+            return media_item_filter
+
+        @classmethod
+        def get_media_item_sort_key(cls) -> typ.Optional[ItemSortKey]:
+            return media_item_sort_key
 
     return LC()
 
