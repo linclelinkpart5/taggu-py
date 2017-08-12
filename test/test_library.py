@@ -1,20 +1,32 @@
 import typing as typ
 import unittest
-import itertools as it
 import pathlib as pl
 import tempfile
+import os
 import os.path
-import collections
+import random
+import string
+import logging
 
 import taggu.library as tl
+import taggu.exceptions as tex
 
 A_LABEL = 'ALBUM'
 D_LABEL = 'DISC'
 T_LABEL = 'TRACK'
 S_LABEL = 'SUBTRACK'
+SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 EXT = '.flac'
 
 HIERARCHY = (A_LABEL, D_LABEL, T_LABEL, S_LABEL)
+
+
+class DisableLogger:
+    def __enter__(self):
+        logging.disable(logging.CRITICAL)
+
+    def __exit__(self, a, b, c):
+        logging.disable(logging.NOTSET)
 
 
 def item_filter(abs_item_path: pl.Path) -> bool:
@@ -23,6 +35,22 @@ def item_filter(abs_item_path: pl.Path) -> bool:
 
 
 class TestLibrary(unittest.TestCase):
+    @classmethod
+    def rel_path_from_nums(cls, nums: typ.Sequence[typ.Optional[int]], with_ext: bool=False) -> pl.Path:
+        p = pl.Path()
+
+        for lbl, num in zip(HIERARCHY, nums):
+            if num is None:
+                continue
+
+            # This produces a name such that the portion before the underscore is unique for each file in a directory.
+            stub = f'{lbl}{num:02}_{SALT_STR}'
+            p = p / stub
+
+        if with_ext:
+            p = p.with_suffix(f'{EXT}')
+        return p
+
     def setUp(self):
         self.root_dir_obj = tempfile.TemporaryDirectory()
 
@@ -32,6 +60,12 @@ class TestLibrary(unittest.TestCase):
             path = self.root_dir_pl / path
             pl.Path(path.parent).mkdir(parents=True, exist_ok=True)
             path.touch(exist_ok=True)
+
+            # Create other files.
+            path.with_name('folder.png').touch(exist_ok=True)
+            path.with_name('output.log').touch(exist_ok=True)
+            path.with_name('taggu_file.yml').touch(exist_ok=True)
+            path.with_name('taggu_self.yml').touch(exist_ok=True)
 
         def nums() -> typ.Generator[typ.Sequence[typ.Optional[int]], None, None]:
             # Well-behaved album, disc, and track hierarchy.
@@ -63,31 +97,171 @@ class TestLibrary(unittest.TestCase):
             # Album that consists of one file.
             yield (4,)
 
+            # A very messed-up album.
+            yield (5, None, 1)
+            yield (5, None, 2)
+            yield (5, None, 3)
+            yield (5, 1, None, 1)
+            yield (5, 1, None, 2)
+            yield (5, 2, 1, 1)
+            yield (5, 2, 1, 2)
+
         for num_seq in nums():
-            p = pl.Path()
-
-            for lbl, num in zip(HIERARCHY, num_seq):
-                if num is None:
-                    continue
-
-                stub = f'{lbl}{num:02}'
-                p = p / stub
-
-            p = p.with_suffix(f'{EXT}')
+            p = self.rel_path_from_nums(num_seq, with_ext=True)
             deep_touch(p)
 
-        # import ipdb; ipdb.set_trace()
+    @staticmethod
+    def traverse(lib_ctx: tl.LibraryContext, func: typ.Callable[[pl.Path, pl.Path], None]):
+        root_dir = lib_ctx.get_root_dir()
+
+        def helper(curr_rel_path: pl.Path):
+            curr_rel_path, curr_abs_path = lib_ctx.co_norm(rel_sub_path=curr_rel_path)
+
+            func(curr_rel_path, curr_abs_path)
+
+            if curr_abs_path.is_dir():
+                for entry in os.listdir(curr_abs_path):
+                    helper(curr_rel_path / entry)
+
+        helper(pl.Path())
 
     def test_gen_library_ctx(self):
-        root_dir_pl = self.root_dir_pl
-        dummy_dir_pl = root_dir_pl / 'dummy' / '..'
-        lib_ctx = tl.gen_library_ctx(root_dir=dummy_dir_pl, media_item_filter=item_filter)
+        # Normal usage.
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
 
-        self.assertEqual(root_dir_pl, lib_ctx.get_root_dir())
+        self.assertEqual(root_dir, lib_ctx.get_root_dir())
         self.assertIs(item_filter, lib_ctx.get_media_item_filter())
+        self.assertEqual('taggu_self.yml', lib_ctx.get_self_meta_file_name())
+        self.assertEqual('taggu_item.yml', lib_ctx.get_item_meta_file_name())
+
+        # Test that root dir is normalized.
+        lib_ctx = tl.gen_library_ctx(root_dir=(root_dir / 'dummy' / '..'), media_item_filter=item_filter)
+
+        self.assertEqual(root_dir, lib_ctx.get_root_dir())
+
+    def test_lib_ctx_co_norm(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        # Normal usage.
+        rel_sub_path = pl.Path('TEST')
+        expected = (rel_sub_path, root_dir / rel_sub_path)
+        produced = lib_ctx.co_norm(rel_sub_path=rel_sub_path)
+        self.assertEqual(expected, produced)
+
+        # Empty/curdur relative path should produce an absolute path of just the root dir.
+        rel_sub_path = pl.Path('.')
+        expected = (rel_sub_path, root_dir)
+        produced = lib_ctx.co_norm(rel_sub_path=rel_sub_path)
+        self.assertEqual(expected, produced)
+
+        # Exception is raised if a path escapes the root dir.
+        rel_sub_path = pl.Path(os.path.pardir)
+        with self.assertRaises(tex.EscapingSubpath):
+            lib_ctx.co_norm(rel_sub_path=rel_sub_path)
+
+        # Exception is raised if the path is not absolute.
+        rel_sub_path = pl.Path(root_dir.root)
+        with self.assertRaises(tex.AbsoluteSubpath):
+            lib_ctx.co_norm(rel_sub_path=rel_sub_path)
+
+    def test_lib_ctx_yield_contains_dir(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+            if abs_sub_path.is_dir():
+                # A relative path to a directory yields the directory.
+                expected = (rel_sub_path,)
+                produced = tuple(lib_ctx.yield_contains_dir(rel_sub_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+            elif abs_sub_path.is_file():
+                # A relative path to a file yields nothing.
+                expected = ()
+                produced = tuple(lib_ctx.yield_contains_dir(rel_sub_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+        self.traverse(lib_ctx, helper)
+
+    def test_lib_ctx_yield_siblings_dir(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        def helper(rel_sub_path: pl.Path, _: pl.Path):
+            if len(rel_sub_path.parts) == 0:
+                # An empty normalized relative path (i.e. at the root) yields nothing.
+                expected = ()
+                produced = tuple(lib_ctx.yield_siblings_dir(rel_sub_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+            else:
+                # Any non-empty normalized relative path yields the parent of that path.
+                expected = (rel_sub_path.parent,)
+                produced = tuple(lib_ctx.yield_siblings_dir(rel_sub_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+        self.traverse(lib_ctx, helper)
+
+    def test_lib_ctx_fuzzy_name_lookup(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+            if abs_sub_path.is_dir():
+                entries: typ.Sequence[str] = tuple(sorted(os.listdir(abs_sub_path)))
+                for entry in entries:
+                    if not item_filter(abs_sub_path / entry):
+                        # Skip item if it does not match the filter.
+                        continue
+
+                    # Look up each item by its unique first portion.
+                    # TODO: Parameterize the separator.
+                    expected = entry
+                    prefix = expected.split('_')[0]
+                    produced = lib_ctx.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_path,
+                                                         prefix_item_name=prefix)
+                    self.assertEqual(expected, produced)
+                    self.assertNotEqual(prefix, produced)
+
+                if len(entries) != 1:
+                    # Get a common prefix filename that will match all entries.
+                    common_prefix: str = os.path.commonprefix(entries)
+
+                    with self.assertRaises(tex.NonUniqueFuzzyFileLookup):
+                        lib_ctx.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_path, prefix_item_name=common_prefix)
+
+        self.traverse(lib_ctx, helper)
+
+    def test_lib_ctx_item_names_in_dir(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+            if abs_sub_path.is_dir():
+                all_entries: typ.AbstractSet[str] = frozenset(os.listdir(abs_sub_path))
+            else:
+                all_entries: typ.AbstractSet[str] = frozenset()
+
+            kept_entries: typ.AbstractSet[str] = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
+
+            self.assertLessEqual(kept_entries, all_entries)
+
+            filtered_entries = all_entries - kept_entries
+            for entry in filtered_entries:
+                self.assertFalse(item_filter(abs_sub_path / entry))
+            for entry in kept_entries:
+                self.assertTrue(item_filter(abs_sub_path / entry))
+
+        self.traverse(lib_ctx, helper)
 
     def tearDown(self):
+        # Uncomment this to inspect the created directory structure.
+        # import ipdb; ipdb.set_trace()
+
         self.root_dir_obj.cleanup()
 
 if __name__ == '__main__':
-    unittest.main()
+    with DisableLogger():
+        unittest.main()

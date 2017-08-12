@@ -1,13 +1,9 @@
 import typing as typ
 import os.path
 import collections.abc
-import enum
 import pathlib as pl
-import itertools as it
-import copy
 import abc
 
-# import taggu.types as tt
 import taggu.logging as tl
 import taggu.exceptions as tex
 import taggu.helpers as th
@@ -74,10 +70,16 @@ class LibraryContext(abc.ABC):
         """Normalizes a relative sub path with respect to the enclosed root directory.
         Returns a tuple of the re-normalized relative sub path and the absolute sub path.
         """
+        if rel_sub_path.is_absolute():
+            raise tex.AbsoluteSubpath()
+
         root_dir = cls.get_root_dir()
         path = root_dir / rel_sub_path
         abs_sub_path = pl.Path(os.path.normpath(path))
-        rel_sub_path = abs_sub_path.relative_to(root_dir)
+        try:
+            rel_sub_path = abs_sub_path.relative_to(root_dir)
+        except ValueError:
+            raise tex.EscapingSubpath()
         return rel_sub_path, abs_sub_path
 
     @classmethod
@@ -93,14 +95,14 @@ class LibraryContext(abc.ABC):
             yield par_dir
 
     @classmethod
-    def fuzzy_name_lookup(cls, *, rel_sub_dir_path: pl.Path, prefix_file_name: str) -> str:
+    def fuzzy_name_lookup(cls, *, rel_sub_dir_path: pl.Path, prefix_item_name: str) -> str:
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
 
-        pattern = f'{prefix_file_name}*'
+        pattern = f'{prefix_item_name}*'
         results = tuple(abs_sub_dir_path.glob(pattern))
 
         if len(results) != 1:
-            msg = (f'Incorrect number of matches for fuzzy lookup of "{prefix_file_name}" '
+            msg = (f'Incorrect number of matches for fuzzy lookup of "{prefix_item_name}" '
                    f'in directory "{abs_sub_dir_path}"; '
                    f'expected: 1, found: {len(results)}')
             logger.error(msg)
@@ -167,7 +169,7 @@ class LibraryContext(abc.ABC):
                                f'and {len(yaml_data)} metadata block(s)'
                                )
 
-            sorted_item_names: typ.Sequence[str] = cls.sort_item_names(item_names)
+            sorted_item_names: typ.Sequence[str] = cls.sort_item_names(item_names=item_names)
 
             for item_name, meta_block in zip(sorted_item_names, yaml_data):
                 rel_item_path = rel_sub_dir_path / item_name
@@ -181,7 +183,7 @@ class LibraryContext(abc.ABC):
                     logger.warning(f'Item name "{item_name}" is not valid, skipping')
                     continue
 
-                item_name = cls.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_dir_path, prefix_file_name=item_name)
+                item_name = cls.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_dir_path, prefix_item_name=item_name)
 
                 # Test if the item name is in the list of discovered item names.
                 if item_name not in item_names:
