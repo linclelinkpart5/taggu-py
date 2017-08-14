@@ -7,9 +7,13 @@ import os.path
 import random
 import string
 import logging
+import copy
+
+import testfixtures as tfix
 
 import taggu.library as tl
 import taggu.exceptions as tex
+import taggu.helpers as th
 
 A_LABEL = 'ALBUM'
 D_LABEL = 'DISC'
@@ -244,17 +248,95 @@ class TestLibrary(unittest.TestCase):
             else:
                 all_entries: typ.AbstractSet[str] = frozenset()
 
-            kept_entries: typ.AbstractSet[str] = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
+            passed_entries: typ.AbstractSet[str] = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
 
-            self.assertLessEqual(kept_entries, all_entries)
+            self.assertLessEqual(passed_entries, all_entries)
 
-            filtered_entries = all_entries - kept_entries
+            filtered_entries = all_entries - passed_entries
             for entry in filtered_entries:
                 self.assertFalse(item_filter(abs_sub_path / entry))
-            for entry in kept_entries:
+            for entry in passed_entries:
                 self.assertTrue(item_filter(abs_sub_path / entry))
 
         self.traverse(lib_ctx, helper)
+
+    def test_lib_ctx_yield_self_meta_pairs(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        yaml_data = {
+            'field_1': 'single_value',
+            'field_2': ['list_of_values', 'another_one'],
+            'field_3': None,
+        }
+
+        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+            if abs_sub_path.is_dir():
+                expected = ((rel_sub_path, copy.deepcopy(yaml_data)),)
+                produced = tuple(lib_ctx.yield_self_meta_pairs(yaml_data=copy.deepcopy(yaml_data),
+                                                               rel_sub_dir_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+        self.traverse(lib_ctx, helper)
+
+    def test_lib_ctx_yield_item_meta_pairs(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        def sequence_helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+            if abs_sub_path.is_dir():
+                passed_items = sorted(lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path))
+                num_passed_items = len(passed_items)
+
+                # Construct YAML data for exact, too many, and too few numbers of passed items.
+                exact_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items)]
+                extra_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items + 1)]
+                insuf_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items - 1)]
+
+                # Only perform insufficient YAML data check if not equal to number of passed items!
+                yaml_data = insuf_yaml_data
+                if len(yaml_data) != num_passed_items:
+                    with tfix.LogCapture(level=logging.WARNING) as l:
+                        expected = tuple((rel_sub_path / item_name, yaml_block)
+                                         for item_name, yaml_block in zip(passed_items, yaml_data))
+                        produced = tuple(lib_ctx.yield_item_meta_pairs(yaml_data=copy.deepcopy(yaml_data),
+                                                                       rel_sub_dir_path=rel_sub_path))
+                        self.assertEqual(expected, produced)
+
+                        expected_logs = (
+                            (tl.__name__, 'WARNING', f'Counts of items in directory and metadata blocks do not match; '
+                                                     f'found {th.pluralize(num_passed_items, "item")} '
+                                                     f'and {th.pluralize(len(yaml_data), "metadata block")}'
+                             )
+                        )
+                        l.check(expected_logs)
+
+                # Always perform exact YAML data checks.
+                yaml_data = exact_yaml_data
+                expected = tuple((rel_sub_path / item_name, yaml_block)
+                                 for item_name, yaml_block in zip(passed_items, yaml_data))
+                produced = tuple(lib_ctx.yield_item_meta_pairs(yaml_data=yaml_data,
+                                                               rel_sub_dir_path=rel_sub_path))
+                self.assertEqual(expected, produced)
+
+                # Always perform extra YAML data checks.
+                yaml_data = extra_yaml_data
+                with tfix.LogCapture(level=logging.WARNING) as l:
+                    expected = tuple((rel_sub_path / item_name, yaml_block)
+                                     for item_name, yaml_block in zip(passed_items, yaml_data))
+                    produced = tuple(lib_ctx.yield_item_meta_pairs(yaml_data=copy.deepcopy(yaml_data),
+                                                                   rel_sub_dir_path=rel_sub_path))
+                    self.assertEqual(expected, produced)
+
+                    expected_logs = (
+                        (tl.__name__, 'WARNING', f'Counts of items in directory and metadata blocks do not match; '
+                                                 f'found {th.pluralize(num_passed_items, "item")} '
+                                                 f'and {th.pluralize(len(yaml_data), "metadata block")}'
+                         )
+                    )
+                    l.check(expected_logs)
+
+        self.traverse(lib_ctx, sequence_helper)
 
     def tearDown(self):
         # Uncomment this to inspect the created directory structure.
@@ -263,5 +345,4 @@ class TestLibrary(unittest.TestCase):
         self.root_dir_obj.cleanup()
 
 if __name__ == '__main__':
-    with DisableLogger():
-        unittest.main()
+    unittest.main()

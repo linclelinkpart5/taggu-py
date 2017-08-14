@@ -147,11 +147,6 @@ class LibraryContext(abc.ABC):
         return vals
 
     @classmethod
-    def sort_item_names(cls, *, item_names: typ.Iterable[str]) -> typ.Sequence[str]:
-        media_item_sort_key = cls.get_media_item_sort_key()
-        return tuple(sorted(iterable=item_names, key=media_item_sort_key))
-
-    @classmethod
     def yield_item_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
 
@@ -165,11 +160,12 @@ class LibraryContext(abc.ABC):
             # TODO: Perform this check for mappings as well.
             if len(item_names) != len(yaml_data):
                 logger.warning(f'Counts of items in directory and metadata blocks do not match; '
-                               f'found {len(item_names)} item(s) '
-                               f'and {len(yaml_data)} metadata block(s)'
+                               f'found {th.pluralize(len(item_names), "item")} '
+                               f'and {th.pluralize(len(yaml_data), "metadata block")}'
                                )
 
-            sorted_item_names: typ.Sequence[str] = cls.sort_item_names(item_names=item_names)
+            media_item_sort_key = cls.get_media_item_sort_key()
+            sorted_item_names: typ.Sequence[str] = tuple(sorted(item_names, key=media_item_sort_key))
 
             for item_name, meta_block in zip(sorted_item_names, yaml_data):
                 rel_item_path = rel_sub_dir_path / item_name
@@ -193,6 +189,8 @@ class LibraryContext(abc.ABC):
 
                 rel_item_path = rel_sub_dir_path / item_name
                 yield rel_item_path, meta_block
+
+            # TODO: Add warning for leftover items in set.
 
     @classmethod
     def yield_self_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
