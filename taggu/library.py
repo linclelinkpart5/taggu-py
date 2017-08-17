@@ -161,8 +161,7 @@ class LibraryContext(abc.ABC):
             if len(item_names) != len(yaml_data):
                 logger.warning(f'Counts of items in directory and metadata blocks do not match; '
                                f'found {th.pluralize(len(item_names), "item")} '
-                               f'and {th.pluralize(len(yaml_data), "metadata block")}'
-                               )
+                               f'and {th.pluralize(len(yaml_data), "metadata block")}')
 
             media_item_sort_key = cls.get_media_item_sort_key()
             sorted_item_names: typ.Sequence[str] = tuple(sorted(item_names, key=media_item_sort_key))
@@ -173,6 +172,7 @@ class LibraryContext(abc.ABC):
 
         elif isinstance(yaml_data, collections.abc.Mapping):
             # Performing mapped application of metadata to interesting items.
+            processed_item_names = set()
             for item_name, meta_block in yaml_data.items():
                 # Test if item name from metadata has a valid name.
                 if not th.is_valid_item_name(item_name):
@@ -180,6 +180,11 @@ class LibraryContext(abc.ABC):
                     continue
 
                 item_name = cls.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_dir_path, prefix_item_name=item_name)
+
+                # Warn if name was already processed.
+                if item_name in processed_item_names:
+                    logger.warning(f'Item "{item_name}" was already processed for this directory, skipping')
+                    continue
 
                 # Test if the item name is in the list of discovered item names.
                 if item_name not in item_names:
@@ -189,8 +194,12 @@ class LibraryContext(abc.ABC):
 
                 rel_item_path = rel_sub_dir_path / item_name
                 yield rel_item_path, meta_block
+                processed_item_names.add(item_name)
 
-            # TODO: Add warning for leftover items in set.
+            remaining_item_names = item_names - processed_item_names
+            if remaining_item_names:
+                logger.warning(f'Found {th.pluralize(len(remaining_item_names), "eligible item")} '
+                               f'remaining not referenced in metadata')
 
     @classmethod
     def yield_self_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
