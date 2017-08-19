@@ -42,14 +42,6 @@ def empty_context():
     yield
 
 
-class DisableLogger:
-    def __enter__(self):
-        logging.disable(logging.CRITICAL)
-
-    def __exit__(self, a, b, c):
-        logging.disable(logging.NOTSET)
-
-
 def item_filter(abs_item_path: pl.Path) -> bool:
     ext = abs_item_path.suffix
     return (abs_item_path.is_file() and ext == EXT) or abs_item_path.is_dir()
@@ -240,11 +232,10 @@ class TestLibrary(unittest.TestCase):
         def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
                 entries: typ.Sequence[str] = tuple(sorted(os.listdir(abs_sub_path)))
-                for entry in entries:
-                    if not item_filter(abs_sub_path / entry):
-                        # Skip item if it does not match the filter.
-                        continue
 
+                filtered_entries = tuple(entry for entry in entries if item_filter(abs_sub_path / entry))
+
+                for entry in filtered_entries:
                     # Look up each item by its unique first portion.
                     expected = entry
                     prefix = expected.split(FUZZY_SEP)[0]
@@ -257,8 +248,17 @@ class TestLibrary(unittest.TestCase):
                     # Get a common prefix filename that will match all entries.
                     common_prefix: str = os.path.commonprefix(entries)
 
-                    with self.assertRaises(tex.NonUniqueFuzzyFileLookup):
+                    msg = (f'Incorrect number of matches for fuzzy lookup of "{common_prefix}" '
+                           f'in directory "{rel_sub_path}"; '
+                           f'expected: 1, found: {len(filtered_entries)}')
+                    expected_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.ERROR, message=msg),)
+
+                    with self.assertRaises(tex.NonUniqueFuzzyFileLookup), \
+                            self.assertLogs(logger=tl.__name__, level=logging.ERROR) as ctx:
                         lib_ctx.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_path, prefix_item_name=common_prefix)
+
+                        produced_log_records = frozenset(yield_log_records(ctx.records))
+                        self.assertEqual(expected_log_records, produced_log_records)
 
         self.traverse(lib_ctx, helper)
 
@@ -296,8 +296,8 @@ class TestLibrary(unittest.TestCase):
 
         def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
-                expected = ((rel_sub_path, copy.deepcopy(yaml_data)),)
-                produced = tuple(lib_ctx.yield_self_meta_pairs(yaml_data=copy.deepcopy(yaml_data),
+                expected = ((rel_sub_path, yaml_data),)
+                produced = tuple(lib_ctx.yield_self_meta_pairs(yaml_data=yaml_data,
                                                                rel_sub_dir_path=rel_sub_path))
                 self.assertEqual(expected, produced)
 
@@ -309,40 +309,59 @@ class TestLibrary(unittest.TestCase):
 
         def sequence_helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
-                passed_items = sorted(lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path))
+                passed_items = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
+                sorted_passed_items = sorted(passed_items)
                 num_passed_items = len(passed_items)
 
+                extra_records = ({f'extra_item': f'extra_value'},)
+
                 # Construct YAML data for exact, too many, and too few numbers of passed items.
-                exact_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items)]
-                extra_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items + 1)]
-                insuf_yaml_data = [{f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items - 1)]
+                exact_record_seq = tuple({f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items))
+                extra_record_seq = tuple(it.chain(exact_record_seq, extra_records))
+                insuf_record_seq = exact_record_seq[:-1]
+
+                extra_data_log_messages = frozenset((f'Counts of items in directory and metadata blocks do not match; '
+                                                     f'found {th.pluralize(num_passed_items, "item")} '
+                                                     f'and {th.pluralize(len(extra_record_seq), "metadata block")}',))
+                insuf_data_log_messages = frozenset(f'Counts of items in directory and metadata blocks do not match; '
+                                                    f'found {th.pluralize(num_passed_items, "item")} '
+                                                    f'and {th.pluralize(len(insuf_record_seq), "metadata block")}'
+                                                    for _ in range(len(passed_items) - len(insuf_record_seq)))
+
+                # Log records expected.
+                extra_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                                                   for msg in extra_data_log_messages)
+                insuf_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                                                   for msg in insuf_data_log_messages)
 
                 # Create a partialed method that generates a logging checker.
                 # TODO: Generalize and move to module/class level.
                 logging_ctx_mgr = ft.partial(self.assertLogs, logger=tl.__name__, level=logging.WARNING)
 
-                for yaml_data in (exact_yaml_data, extra_yaml_data, insuf_yaml_data):
+                expected_data_and_logs = (
+                    (exact_record_seq, frozenset()),
+                    (extra_record_seq, extra_data_log_records),
+                    (insuf_record_seq, insuf_data_log_records),
+                )
+
+                for record_seq, expected_log_records in expected_data_and_logs:
                     ctx_mgr = empty_context
-                    if len(yaml_data) != num_passed_items:
+                    if expected_log_records:
                         ctx_mgr = logging_ctx_mgr
+
+                    # Construct YAML data.
+                    yaml_data = list(record_seq)
 
                     with ctx_mgr() as ctx:
                         expected = tuple((rel_sub_path / item_name, yaml_block)
-                                         for item_name, yaml_block in zip(passed_items, yaml_data))
+                                         for item_name, yaml_block in zip(sorted_passed_items, yaml_data))
                         produced = tuple(lib_ctx.yield_item_meta_pairs(yaml_data=copy.deepcopy(yaml_data),
                                                                        rel_sub_dir_path=rel_sub_path))
                         self.assertEqual(expected, produced)
 
                     if ctx:
-                        expected_logs = (
-                            (tl.__name__, logging.WARNING,
-                             f'Counts of items in directory and metadata blocks do not match; '
-                             f'found {th.pluralize(num_passed_items, "item")} '
-                             f'and {th.pluralize(len(yaml_data), "metadata block")}'
-                             ),
-                        )
-                        for record, expected_log in zip(ctx.records, expected_logs):
-                            self.assertTrue(compare_log_record(record, *expected_log))
+                        produced_log_records = frozenset(yield_log_records(ctx.records))
+                        self.assertEqual(expected_log_records, produced_log_records)
 
         self.traverse(lib_ctx, sequence_helper)
 
@@ -362,7 +381,6 @@ class TestLibrary(unittest.TestCase):
             if abs_sub_path.is_dir():
                 passed_items = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
                 sorted_passed_items = sorted(passed_items)
-                num_passed_items = len(passed_items)
 
                 extra_records = tuple(LookupRecord(item_name=EXTRA_INELIGIBLE_FN,
                                                    fuzzy_item_name=EXTRA_INELIGIBLE_FN.split(FUZZY_SEP)[0],
@@ -388,7 +406,7 @@ class TestLibrary(unittest.TestCase):
                                                     f'for this directory, skipping'
                                                     for _ in extra_records)
                 insuf_data_log_messages = frozenset(f'Found 1 eligible item remaining not referenced in metadata'
-                                                    for _ in abs_sub_path.glob(EXTRA_INELIGIBLE_FN))
+                                                    for _ in range(len(passed_items) - len(insuf_record_seq)))
                 inval_data_log_messages = frozenset(f'Item name "{invalid_item_name}" is not valid, skipping'
                                                     for invalid_item_name in INVALID_ITEM_NAMES)
 
@@ -404,12 +422,12 @@ class TestLibrary(unittest.TestCase):
                 # TODO: Generalize and move to module/class level.
                 logging_ctx_mgr = ft.partial(self.assertLogs, logger=tl.__name__, level=logging.WARNING)
 
-                expected_data_and_logs = [
+                expected_data_and_logs = (
                     (exact_record_seq, frozenset()),
                     (extra_record_seq, extra_data_log_records),
                     (insuf_record_seq, insuf_data_log_records),
                     (inval_record_seq, inval_data_log_records),
-                ]
+                )
 
                 for record_seq, expected_log_records in expected_data_and_logs:
                     ctx_mgr = empty_context
@@ -424,6 +442,11 @@ class TestLibrary(unittest.TestCase):
                                     for r in record_seq if r.item_name in passed_items}
                         produced = {k: v for k, v in lib_ctx.yield_item_meta_pairs(yaml_data=yaml_data,
                                                                                    rel_sub_dir_path=rel_sub_path)}
+                        # print('* Current Dir:', rel_sub_path)
+                        # print('* Items in Dir:', tuple(abs_sub_path.iterdir()))
+                        # print('* YAML Data:', yaml_data)
+                        # print('* Expected Logs:', expected_log_records)
+                        # print()
                         self.assertEqual(expected, produced)
 
                     if ctx:
@@ -432,12 +455,23 @@ class TestLibrary(unittest.TestCase):
 
         self.traverse(lib_ctx, mapping_helper)
 
+    def test_lib_ctx_yield_meta_source_specs(self):
+        root_dir = self.root_dir_pl
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+
+        expected = (
+            (lib_ctx.get_item_meta_file_name(), lib_ctx.yield_siblings_dir, lib_ctx.yield_item_meta_pairs),
+            (lib_ctx.get_self_meta_file_name(), lib_ctx.yield_contains_dir, lib_ctx.yield_self_meta_pairs),
+        )
+        produced = tuple(lib_ctx.yield_meta_source_specs())
+        self.assertEqual(expected, produced)
+
     def tearDown(self):
         # Uncomment this to inspect the created directory structure.
         # import ipdb; ipdb.set_trace()
 
-        # self.root_dir_obj.cleanup()
-        pass
+        self.root_dir_obj.cleanup()
 
 if __name__ == '__main__':
+    logging.getLogger(tl.__name__).setLevel(level=logging.WARNING)
     unittest.main()

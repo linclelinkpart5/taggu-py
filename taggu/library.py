@@ -7,32 +7,10 @@ import abc
 import taggu.logging as tl
 import taggu.exceptions as tex
 import taggu.helpers as th
-import taggu.labels as tlb
+import taggu.types as tt
 
 
 logger = tl.get_logger(__name__)
-
-ItemFilter = typ.Callable[[pl.Path], bool]
-ItemSortKey = typ.Callable[[pl.Path], typ.Any]
-
-MetadataKey = typ.NewType('MetadataKey', str)
-MetadataValue = typ.Union[str, typ.Sequence[str]]
-
-Metadata = typ.Mapping[MetadataKey, MetadataValue]
-
-DirGetter = typ.Callable[[pl.Path], typ.Iterable[pl.Path]]
-Multiplexer = typ.Callable[[typ.Any, pl.Path, typ.Optional[ItemFilter]], typ.Iterable[typ.Tuple[pl.Path, Metadata]]]
-
-MetaSourceSpec = typ.Tuple[pl.Path, DirGetter, Multiplexer]
-
-MetadataCache = typ.MutableMapping[pl.Path, Metadata]
-
-MetadataResolver = typ.Callable[[pl.Path, str], typ.Generator[str, None, None]]
-
-RootDirectoryNormer = typ.Callable[[pl.Path], typ.Tuple[pl.Path, pl.Path]]
-
-MetadataPair = typ.Tuple[pl.Path, Metadata]
-MetadataPairGen = typ.Generator[MetadataPair, None, None]
 
 ########################################################################################################################
 #   Library context
@@ -47,12 +25,12 @@ class LibraryContext(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def get_media_item_filter(cls) -> typ.Optional[ItemFilter]:
+    def get_media_item_filter(cls) -> typ.Optional[tt.ItemFilter]:
         pass
 
     @classmethod
     @abc.abstractmethod
-    def get_media_item_sort_key(cls) -> typ.Optional[ItemSortKey]:
+    def get_media_item_sort_key(cls) -> typ.Optional[tt.ItemSortKey]:
         pass
 
     @classmethod
@@ -71,7 +49,9 @@ class LibraryContext(abc.ABC):
         Returns a tuple of the re-normalized relative sub path and the absolute sub path.
         """
         if rel_sub_path.is_absolute():
-            raise tex.AbsoluteSubpath()
+            msg = f'Sub path "{rel_sub_path}" is not a relative path'
+            logger.error(msg)
+            raise tex.AbsoluteSubpath(msg)
 
         root_dir = cls.get_root_dir()
         path = root_dir / rel_sub_path
@@ -79,17 +59,19 @@ class LibraryContext(abc.ABC):
         try:
             rel_sub_path = abs_sub_path.relative_to(root_dir)
         except ValueError:
-            raise tex.EscapingSubpath()
+            msg = f'Normalized absolute path "{abs_sub_path}" is not a sub path of root directory "{root_dir}"'
+            logger.error(msg)
+            raise tex.EscapingSubpath(msg)
         return rel_sub_path, abs_sub_path
 
     @classmethod
-    def yield_contains_dir(cls, *, rel_sub_path: pl.Path) -> typ.Generator[pl.Path, None, None]:
+    def yield_contains_dir(cls, *, rel_sub_path: pl.Path) -> tt.PathGen:
         rel_sub_path, abs_sub_path = cls.co_norm(rel_sub_path=rel_sub_path)
         if abs_sub_path.is_dir():
             yield rel_sub_path
 
     @classmethod
-    def yield_siblings_dir(cls, *, rel_sub_path: pl.Path) -> typ.Generator[pl.Path, None, None]:
+    def yield_siblings_dir(cls, *, rel_sub_path: pl.Path) -> tt.PathGen:
         par_dir = rel_sub_path.parent
         if par_dir != rel_sub_path:
             yield par_dir
@@ -103,7 +85,7 @@ class LibraryContext(abc.ABC):
 
         if len(results) != 1:
             msg = (f'Incorrect number of matches for fuzzy lookup of "{prefix_item_name}" '
-                   f'in directory "{abs_sub_dir_path}"; '
+                   f'in directory "{rel_sub_dir_path}"; '
                    f'expected: 1, found: {len(results)}')
             logger.error(msg)
             raise tex.NonUniqueFuzzyFileLookup(msg)
@@ -147,7 +129,7 @@ class LibraryContext(abc.ABC):
         return vals
 
     @classmethod
-    def yield_item_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
+    def yield_item_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
 
         # Find eligible item names in this directory.
@@ -202,25 +184,29 @@ class LibraryContext(abc.ABC):
                                f'remaining not referenced in metadata')
 
     @classmethod
-    def yield_self_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> MetadataPairGen:
+    def yield_self_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
         # The target of the self metadata is the folder containing the self metadata file.
         if isinstance(yaml_data, collections.abc.Mapping):
             yield rel_sub_dir_path, yaml_data
 
     @classmethod
-    def yield_meta_source_specs(cls) -> typ.Generator[MetaSourceSpec, None, None]:
+    def yield_meta_source_specs(cls) -> tt.MetaSourceSpecGen:
         """Yields the meta source specifications for where to obtain data.
         The order these specifications are emitted designates their priority;
         later specifications override previous ones in the case of a conflict.
         """
-        yield cls.get_item_meta_file_name(), cls.yield_siblings_dir, cls.yield_item_meta_pairs
-        yield cls.get_self_meta_file_name(), cls.yield_contains_dir, cls.yield_self_meta_pairs
+        yield tt.MetaSourceSpec(meta_file_name=cls.get_item_meta_file_name(),
+                                dir_getter=cls.yield_siblings_dir,
+                                multiplexer=cls.yield_item_meta_pairs)
+        yield tt.MetaSourceSpec(meta_file_name=cls.get_self_meta_file_name(),
+                                dir_getter=cls.yield_contains_dir,
+                                multiplexer=cls.yield_self_meta_pairs)
 
 
 def gen_library_ctx(*,
                     root_dir: pl.Path,
-                    media_item_filter: ItemFilter=None,
-                    media_item_sort_key: ItemSortKey=None,
+                    media_item_filter: tt.ItemFilter=None,
+                    media_item_sort_key: tt.ItemSortKey=None,
                     self_meta_file_name: str='taggu_self.yml',
                     item_meta_file_name: str='taggu_item.yml') -> LibraryContext:
     # Expand user dir directives (~ and ~user), collapse dotted (. and ..) entries in path, and absolute-ize.
@@ -240,11 +226,11 @@ def gen_library_ctx(*,
             return self_meta_file_name
 
         @classmethod
-        def get_media_item_filter(cls) -> typ.Optional[ItemFilter]:
+        def get_media_item_filter(cls) -> typ.Optional[tt.ItemFilter]:
             return media_item_filter
 
         @classmethod
-        def get_media_item_sort_key(cls) -> typ.Optional[ItemSortKey]:
+        def get_media_item_sort_key(cls) -> typ.Optional[tt.ItemSortKey]:
             return media_item_sort_key
 
     return LC()
