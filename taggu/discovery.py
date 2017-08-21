@@ -47,7 +47,7 @@ class DiscoveryContext(abc.ABC):
             yield from cls.items_from_meta_file(rel_meta_path=rel_meta_path)
 
 
-def gen_library_ctx(*, library_context: tlib.LibraryContext) -> DiscoveryContext:
+def gen_discovery_ctx(*, library_context: tlib.LibraryContext) -> DiscoveryContext:
     class DC(DiscoveryContext):
         @classmethod
         def meta_files_from_item(cls, rel_item_path: pl.Path) -> tt.PathGen:

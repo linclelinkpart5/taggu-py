@@ -157,7 +157,7 @@ class TestLibrary(unittest.TestCase):
         self.assertEqual('taggu_item.yml', lib_ctx.get_item_meta_file_name())
 
         # Test that root dir is normalized.
-        lib_ctx = tl.gen_library_ctx(root_dir=(root_dir / 'dummy' / '..'), media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=(root_dir / 'dummy' / os.path.pardir), media_item_filter=item_filter)
 
         self.assertEqual(root_dir, lib_ctx.get_root_dir())
 

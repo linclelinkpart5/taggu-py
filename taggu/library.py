@@ -65,13 +65,13 @@ class LibraryContext(abc.ABC):
         return rel_sub_path, abs_sub_path
 
     @classmethod
-    def yield_contains_dir(cls, *, rel_sub_path: pl.Path) -> tt.PathGen:
+    def yield_contains_dir(cls, rel_sub_path: pl.Path) -> tt.PathGen:
         rel_sub_path, abs_sub_path = cls.co_norm(rel_sub_path=rel_sub_path)
         if abs_sub_path.is_dir():
             yield rel_sub_path
 
     @classmethod
-    def yield_siblings_dir(cls, *, rel_sub_path: pl.Path) -> tt.PathGen:
+    def yield_siblings_dir(cls, rel_sub_path: pl.Path) -> tt.PathGen:
         par_dir = rel_sub_path.parent
         if par_dir != rel_sub_path:
             yield par_dir
@@ -94,7 +94,7 @@ class LibraryContext(abc.ABC):
         return abs_found_path.name
 
     @classmethod
-    def item_names_in_dir(cls, *, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
+    def item_names_in_dir(cls, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
         """Finds item names in a given directory. These items must pass a filter in order to be selected."""
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
 
@@ -129,7 +129,7 @@ class LibraryContext(abc.ABC):
         return vals
 
     @classmethod
-    def yield_item_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
+    def yield_item_meta_pairs(cls, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
 
         # Find eligible item names in this directory.
@@ -184,7 +184,7 @@ class LibraryContext(abc.ABC):
                                f'remaining not referenced in metadata')
 
     @classmethod
-    def yield_self_meta_pairs(cls, *, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
+    def yield_self_meta_pairs(cls, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
         # The target of the self metadata is the folder containing the self metadata file.
         if isinstance(yaml_data, collections.abc.Mapping):
             yield rel_sub_dir_path, yaml_data
