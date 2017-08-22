@@ -1,14 +1,11 @@
-import typing as typ
-import os.path
-import collections.abc
-import pathlib as pl
 import abc
+import pathlib as pl
+import typing as typ
 
-import taggu.library as tlib
-import taggu.types as tt
-import taggu.logging as tl
+import taggu.contexts.library as tlib
 import taggu.helpers as th
-
+import taggu.logging as tl
+import taggu.types as tt
 
 logger = tl.get_logger(__name__)
 
@@ -20,6 +17,13 @@ logger = tl.get_logger(__name__)
 
 class DiscoveryContext(abc.ABC):
     """Handles retrieving meta file and item paths, along with raw metadata retrieval."""
+
+    @classmethod
+    @abc.abstractmethod
+    def get_library_context(cls) -> tlib.LibraryContext:
+        """Returns the library context used in this discovery context."""
+        pass
+
     @classmethod
     @abc.abstractmethod
     def meta_files_from_item(cls, rel_item_path: pl.Path) -> tt.PathGen:
@@ -49,6 +53,10 @@ class DiscoveryContext(abc.ABC):
 
 def gen_discovery_ctx(*, library_context: tlib.LibraryContext) -> DiscoveryContext:
     class DC(DiscoveryContext):
+        @classmethod
+        def get_library_context(cls) -> tlib.LibraryContext:
+            return library_context
+
         @classmethod
         def meta_files_from_item(cls, rel_item_path: pl.Path) -> tt.PathGen:
             meta_specs: tt.MetaSourceSpecGen = library_context.yield_meta_source_specs()

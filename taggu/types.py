@@ -5,7 +5,8 @@ ItemFilter = typ.Callable[[pl.Path], bool]
 ItemSortKey = typ.Callable[[pl.Path], typ.Any]
 
 MetadataKey = typ.NewType('MetadataKey', str)
-MetadataValue = typ.Union[str, typ.Sequence[str]]
+FieldValue = typ.Optional[str]
+MetadataValue = typ.Union[FieldValue, typ.Sequence[FieldValue]]
 
 Metadata = typ.Mapping[MetadataKey, MetadataValue]
 
