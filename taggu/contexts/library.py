@@ -195,10 +195,10 @@ class LibraryContext(abc.ABC):
         The order these specifications are emitted designates their priority;
         later specifications override previous ones in the case of a conflict.
         """
-        yield tt.MetaSourceSpec(meta_file_name=cls.get_item_meta_file_name(),
+        yield tt.MetaSourceSpec(meta_file_name=pl.Path(cls.get_item_meta_file_name()),
                                 dir_getter=cls.yield_siblings_dir,
                                 multiplexer=cls.yield_item_meta_pairs)
-        yield tt.MetaSourceSpec(meta_file_name=cls.get_self_meta_file_name(),
+        yield tt.MetaSourceSpec(meta_file_name=pl.Path(cls.get_self_meta_file_name()),
                                 dir_getter=cls.yield_contains_dir,
                                 multiplexer=cls.yield_self_meta_pairs)
 
