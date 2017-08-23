@@ -1,10 +1,13 @@
 import typing as typ
 import pathlib as pl
+import random
+import string
+import contextlib
+import logging
 
 import yaml
 
 import taggu.types as tt
-import taggu.contexts.library as tcl
 
 DirectoryHierarchyMapping = typ.Mapping[str, typ.Optional['DirectoryHierarchyMapping']]
 TraverseVisitorFunc = typ.Callable[[pl.Path, pl.Path], None]
@@ -25,88 +28,106 @@ ITEM_META_KEY = 'item'
 SELF_META_STR_TEMPLATE = 'self metadata for target "{}"'
 ITEM_META_STR_TEMPLATE = 'item metadata for target "{}"'
 
+RANDOM_SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
+
+
+class LogEntry(typ.NamedTuple):
+    logger: str
+    level: int
+    message: str
+
+
+@contextlib.contextmanager
+def empty_context() -> typ.Generator[None, None, None]:
+    """A context manager that does nothing, mainly useful for unit testing."""
+    yield
+
 
 def gen_default_dir_hier_map() -> DirectoryHierarchyMapping:
     dir_hierarchy: DirectoryHierarchyMapping = {
         # Well-behaved album.
-        f'{A_LABEL}_01': {
-            f'{D_LABEL}_01': {
-                f'{T_LABEL}_01': None,
-                f'{T_LABEL}_02': None,
-                f'{T_LABEL}_03': None,
+        f'{A_LABEL}01': {
+            f'{D_LABEL}01': {
+                f'{T_LABEL}01': None,
+                f'{T_LABEL}02': None,
+                f'{T_LABEL}03': None,
             },
-            f'{D_LABEL}_02': {
-                f'{T_LABEL}_01': None,
-                f'{T_LABEL}_02': None,
-                f'{T_LABEL}_03': None,
+            f'{D_LABEL}02': {
+                f'{T_LABEL}01': None,
+                f'{T_LABEL}02': None,
+                f'{T_LABEL}03': None,
             },
         },
 
         # Album with a disc and tracks, and loose tracks not on a disc.
-        f'{A_LABEL}_02': {
-            f'{D_LABEL}_01': {
-                f'{T_LABEL}_01': None,
-                f'{T_LABEL}_02': None,
-                f'{T_LABEL}_03': None,
+        f'{A_LABEL}02': {
+            f'{D_LABEL}01': {
+                f'{T_LABEL}01': None,
+                f'{T_LABEL}02': None,
+                f'{T_LABEL}03': None,
             },
-            f'{T_LABEL}_01': None,
-            f'{T_LABEL}_02': None,
-            f'{T_LABEL}_03': None,
+            f'{T_LABEL}01': None,
+            f'{T_LABEL}02': None,
+            f'{T_LABEL}03': None,
         },
 
         # Album with discs and tracks, and subtracks on one disc.
-        f'{A_LABEL}_03': {
-            f'{D_LABEL}_01': {
-                f'{T_LABEL}_01': None,
-                f'{T_LABEL}_02': None,
-                f'{T_LABEL}_03': None,
+        f'{A_LABEL}03': {
+            f'{D_LABEL}01': {
+                f'{T_LABEL}01': None,
+                f'{T_LABEL}02': None,
+                f'{T_LABEL}03': None,
             },
-            f'{D_LABEL}_02': {
-                f'{T_LABEL}_01': {
-                    f'{S_LABEL}_01': None,
-                    f'{S_LABEL}_02': None,
+            f'{D_LABEL}02': {
+                f'{T_LABEL}01': {
+                    f'{S_LABEL}01': None,
+                    f'{S_LABEL}02': None,
                 },
-                f'{T_LABEL}_02': {
-                    f'{S_LABEL}_01': None,
-                    f'{S_LABEL}_02': None,
+                f'{T_LABEL}02': {
+                    f'{S_LABEL}01': None,
+                    f'{S_LABEL}02': None,
                 },
-                f'{T_LABEL}_03': None,
-                f'{T_LABEL}_04': None,
+                f'{T_LABEL}03': None,
+                f'{T_LABEL}04': None,
             },
         },
 
         # Album that consists of one file.
-        f'{A_LABEL}_04': None,
+        f'{A_LABEL}04': None,
 
         # A very messed-up album.
-        f'{A_LABEL}_05': {
-            f'{D_LABEL}_01': {
-                f'{S_LABEL}_01': None,
-                f'{S_LABEL}_02': None,
-                f'{S_LABEL}_03': None,
+        f'{A_LABEL}05': {
+            f'{D_LABEL}01': {
+                f'{S_LABEL}01': None,
+                f'{S_LABEL}02': None,
+                f'{S_LABEL}03': None,
             },
-            f'{D_LABEL}_02': {
-                f'{T_LABEL}_01': {
-                    f'{S_LABEL}_01': None,
-                    f'{S_LABEL}_02': None,
+            f'{D_LABEL}02': {
+                f'{T_LABEL}01': {
+                    f'{S_LABEL}01': None,
+                    f'{S_LABEL}02': None,
                 },
             },
-            f'{T_LABEL}_01': None,
-            f'{T_LABEL}_02': None,
-            f'{T_LABEL}_03': None,
+            f'{T_LABEL}01': None,
+            f'{T_LABEL}02': None,
+            f'{T_LABEL}03': None,
         },
     }
 
     return dir_hierarchy
 
 
-def write_dir_hierarchy(root_dir: pl.Path,
-                        dir_mapping: DirectoryHierarchyMapping,
-                        item_file_suffix: str=None) -> None:
+def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMapping,
+                        item_file_suffix: str=None, apply_random_salt: bool=False) -> None:
     """Creates a folder and file hierarchy from a mapping file."""
     def helper(curr_dir_mapping: DirectoryHierarchyMapping,
                curr_rel_path: pl.Path=pl.Path()):
         for stub, child in curr_dir_mapping.items():
+            if apply_random_salt:
+                # Add an extra randomized-per-run string to the end of each entry name.
+                # This helps with testing for fuzzy name lookups.
+                stub = f'{stub}_{RANDOM_SALT_STR}'
+
             if child is None:
                 # Create this entry as a file.
                 # Current relative path is to be a directory.
@@ -166,3 +187,18 @@ def traverse(root_dir: pl.Path, func: TraverseVisitorFunc,
                 helper(curr_rel_path / entry_name)
 
     helper()
+
+
+def touch_extra_files(root_dir: pl.Path, fns: typ.Iterable[typ.Union[str, pl.Path]]) -> None:
+    def is_dir(abs_path):
+        return abs_path.is_dir()
+
+    for fn in fns:
+        def func(_, abs_path):
+            (abs_path / fn).touch(exist_ok=True)
+        traverse(root_dir=root_dir, func=func, action_filter=is_dir)
+
+
+def yield_log_entries(ctx_manager_records: typ.Iterable[logging.LogRecord]) -> typ.Generator[LogEntry, None, None]:
+    for lr in ctx_manager_records:
+        yield LogEntry(logger=lr.name, level=lr.levelno, message=lr.getMessage())

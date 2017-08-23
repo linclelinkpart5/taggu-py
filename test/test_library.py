@@ -17,6 +17,8 @@ import taggu.contexts.library as tl
 import taggu.exceptions as tex
 import taggu.helpers as th
 
+import test.helpers as tsth
+
 A_LABEL = 'ALBUM'
 D_LABEL = 'DISC'
 T_LABEL = 'TRACK'
@@ -47,91 +49,95 @@ def item_filter(abs_item_path: pl.Path) -> bool:
     return (abs_item_path.is_file() and ext == EXT) or abs_item_path.is_dir()
 
 
-def compare_log_record(record: logging.LogRecord, name: str, levelno: int, message: str) -> bool:
-    return record.name == name and record.levelno == levelno and record.getMessage() == message
-
-
 def yield_log_records(ctx_manager_records: typ.Sequence[logging.LogRecord]) -> typ.Generator[LogEntry, None, None]:
     for lr in ctx_manager_records:
         yield LogEntry(logger=lr.name, level=lr.levelno, message=lr.getMessage())
 
 
 class TestLibrary(unittest.TestCase):
-    @classmethod
-    def rel_path_from_nums(cls, nums: typ.Sequence[typ.Optional[int]], with_ext: bool=False) -> pl.Path:
-        p = pl.Path()
-
-        for lbl, num in zip(HIERARCHY, nums):
-            if num is None:
-                continue
-
-            # This produces a name such that the portion before the underscore is unique for each file in a directory.
-            stub = f'{lbl}{num:02}{FUZZY_SEP}{SALT_STR}'
-            p = p / stub
-
-        if with_ext:
-            p = p.with_suffix(f'{EXT}')
-        return p
+    # @classmethod
+    # def rel_path_from_nums(cls, nums: typ.Sequence[typ.Optional[int]], with_ext: bool=False) -> pl.Path:
+    #     p = pl.Path()
+    #
+    #     for lbl, num in zip(HIERARCHY, nums):
+    #         if num is None:
+    #             continue
+    #
+    #         # This produces a name such that the portion before the underscore is unique for each file in a directory.
+    #         stub = f'{lbl}{num:02}{FUZZY_SEP}{SALT_STR}'
+    #         p = p / stub
+    #
+    #     if with_ext:
+    #         p = p.with_suffix(f'{EXT}')
+    #     return p
 
     def setUp(self):
         self.root_dir_obj = tempfile.TemporaryDirectory()
 
         self.root_dir_pl = pl.Path(self.root_dir_obj.name)
 
-        def deep_touch(path: pl.Path):
-            path = self.root_dir_pl / path
-            pl.Path(path.parent).mkdir(parents=True, exist_ok=True)
-            path.touch(exist_ok=True)
+        dir_hier_map = tsth.gen_default_dir_hier_map()
+        tsth.write_dir_hierarchy(root_dir=self.root_dir_pl,
+                                 dir_mapping=dir_hier_map,
+                                 item_file_suffix=EXT,
+                                 apply_random_salt=True)
+        tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=item_filter)
+        tsth.touch_extra_files(root_dir=self.root_dir_pl, fns=('folder.png', 'output.log'))
 
-            # Create other files.
-            path.with_name('folder.png').touch(exist_ok=True)
-            path.with_name('output.log').touch(exist_ok=True)
-            path.with_name('taggu_file.yml').touch(exist_ok=True)
-            path.with_name('taggu_self.yml').touch(exist_ok=True)
-            path.with_name(EXTRA_INELIGIBLE_FN).touch(exist_ok=True)
-
-        def nums() -> typ.Generator[typ.Sequence[typ.Optional[int]], None, None]:
-            # Well-behaved album, disc, and track hierarchy.
-            yield (1, 1, 1)
-            yield (1, 1, 2)
-            yield (1, 1, 3)
-            yield (1, 2, 1)
-            yield (1, 2, 2)
-            yield (1, 2, 3)
-
-            # Album with a disc and tracks, and loose tracks not on a disc.
-            yield (2, 1, 1)
-            yield (2, 1, 2)
-            yield (2, 1, 3)
-            yield (2, None, 1)
-            yield (2, None, 2)
-            yield (2, None, 3)
-
-            # Album with discs and tracks, and subtracks on one disc.
-            yield (3, 1, 1)
-            yield (3, 1, 2)
-            yield (3, 1, 3)
-            yield (3, 2, 1, 1)
-            yield (3, 2, 1, 2)
-            yield (3, 2, 2, 1)
-            yield (3, 2, 2, 2)
-            yield (3, 2, 3)
-
-            # Album that consists of one file.
-            yield (4,)
-
-            # A very messed-up album.
-            yield (5, None, 1)
-            yield (5, None, 2)
-            yield (5, None, 3)
-            yield (5, 1, None, 1)
-            yield (5, 1, None, 2)
-            yield (5, 2, 1, 1)
-            yield (5, 2, 1, 2)
-
-        for num_seq in nums():
-            p = self.rel_path_from_nums(num_seq, with_ext=True)
-            deep_touch(p)
+        # def deep_touch(path: pl.Path):
+        #     path = self.root_dir_pl / path
+        #     pl.Path(path.parent).mkdir(parents=True, exist_ok=True)
+        #     path.touch(exist_ok=True)
+        #
+        #     # Create other files.
+        #     path.with_name('folder.png').touch(exist_ok=True)
+        #     path.with_name('output.log').touch(exist_ok=True)
+        #     path.with_name('taggu_file.yml').touch(exist_ok=True)
+        #     path.with_name('taggu_self.yml').touch(exist_ok=True)
+        #     path.with_name(EXTRA_INELIGIBLE_FN).touch(exist_ok=True)
+        #
+        # def nums() -> typ.Generator[typ.Sequence[typ.Optional[int]], None, None]:
+        #     # Well-behaved album, disc, and track hierarchy.
+        #     yield (1, 1, 1)
+        #     yield (1, 1, 2)
+        #     yield (1, 1, 3)
+        #     yield (1, 2, 1)
+        #     yield (1, 2, 2)
+        #     yield (1, 2, 3)
+        #
+        #     # Album with a disc and tracks, and loose tracks not on a disc.
+        #     yield (2, 1, 1)
+        #     yield (2, 1, 2)
+        #     yield (2, 1, 3)
+        #     yield (2, None, 1)
+        #     yield (2, None, 2)
+        #     yield (2, None, 3)
+        #
+        #     # Album with discs and tracks, and subtracks on one disc.
+        #     yield (3, 1, 1)
+        #     yield (3, 1, 2)
+        #     yield (3, 1, 3)
+        #     yield (3, 2, 1, 1)
+        #     yield (3, 2, 1, 2)
+        #     yield (3, 2, 2, 1)
+        #     yield (3, 2, 2, 2)
+        #     yield (3, 2, 3)
+        #
+        #     # Album that consists of one file.
+        #     yield (4,)
+        #
+        #     # A very messed-up album.
+        #     yield (5, None, 1)
+        #     yield (5, None, 2)
+        #     yield (5, None, 3)
+        #     yield (5, 1, None, 1)
+        #     yield (5, 1, None, 2)
+        #     yield (5, 2, 1, 1)
+        #     yield (5, 2, 1, 2)
+        #
+        # for num_seq in nums():
+        #     p = self.rel_path_from_nums(num_seq, with_ext=True)
+        #     deep_touch(p)
 
     @staticmethod
     def traverse(lib_ctx: tl.LibraryContext, func: typ.Callable[[pl.Path, pl.Path], None]):
