@@ -21,7 +21,7 @@ MAIN_KEY = 'info'
 SELF_META_STR_TEMPLATE = 'self metadata for target "{}"'
 ITEM_META_STR_TEMPLATE = 'item metadata for target "{}"'
 
-DirectoryHierarchy = typ.Mapping[str, typ.Union['DirectoryHierarchy', None]]
+DirectoryHierarchy = typ.Mapping[str, typ.Optional['DirectoryHierarchy']]
 
 
 def item_filter(abs_item_path: pl.Path) -> bool:
