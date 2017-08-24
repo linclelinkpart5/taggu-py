@@ -4,6 +4,7 @@ import random
 import string
 import contextlib
 import logging
+import os.path
 
 import yaml
 
@@ -22,6 +23,7 @@ SELF_META_FN = 'taggu_self.yml'
 ITEM_META_FN = 'taggu_item.yml'
 
 ITEM_FILE_EXT = '.flac'
+ITEM_FN_SEP = '_'
 
 SELF_META_KEY = 'self'
 ITEM_META_KEY = 'item'
@@ -126,7 +128,7 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
             if apply_random_salt:
                 # Add an extra randomized-per-run string to the end of each entry name.
                 # This helps with testing for fuzzy name lookups.
-                stub = f'{stub}_{RANDOM_SALT_STR}'
+                stub = f'{stub}{ITEM_FN_SEP}{RANDOM_SALT_STR}'
 
             if child is None:
                 # Create this entry as a file.
@@ -202,3 +204,20 @@ def touch_extra_files(root_dir: pl.Path, fns: typ.Iterable[typ.Union[str, pl.Pat
 def yield_log_entries(ctx_manager_records: typ.Iterable[logging.LogRecord]) -> typ.Generator[LogEntry, None, None]:
     for lr in ctx_manager_records:
         yield LogEntry(logger=lr.name, level=lr.levelno, message=lr.getMessage())
+
+
+def yield_invalid_fns() -> typ.Generator[str, None, None]:
+    yield ''
+    yield os.path.curdir
+    yield os.path.pardir
+    yield os.path.sep
+    if os.path.altsep:
+        yield os.path.altsep
+    yield os.path.join('a', '')
+    yield os.path.join('a', os.path.curdir)
+    yield os.path.join('a', os.path.pardir)
+    yield os.path.join('a', 'b')
+
+
+def default_item_filter(abs_item_path: pl.Path) -> bool:
+    return (abs_item_path.is_file() and abs_item_path.suffix == ITEM_FILE_EXT) or abs_item_path.is_dir()

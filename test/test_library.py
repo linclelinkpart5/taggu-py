@@ -1,5 +1,4 @@
 import collections
-import contextlib
 import copy
 import functools as ft
 import itertools as it
@@ -7,8 +6,6 @@ import logging
 import os
 import os.path
 import pathlib as pl
-import random
-import string
 import tempfile
 import typing as typ
 import unittest
@@ -19,58 +16,10 @@ import taggu.helpers as th
 
 import test.helpers as tsth
 
-A_LABEL = 'ALBUM'
-D_LABEL = 'DISC'
-T_LABEL = 'TRACK'
-S_LABEL = 'SUBTRACK'
-SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
-EXT = '.flac'
-FUZZY_SEP = '_'
-EXTRA_INELIGIBLE_FN = f'EXTRA{FUZZY_SEP}{SALT_STR}'
-INVALID_ITEM_NAMES = ('', os.path.curdir, os.path.pardir, os.path.sep,
-                      f'a{os.path.sep}', f'a{os.path.sep}{os.path.curdir}', f'a{os.path.sep}{os.path.pardir}')
-if os.path.altsep:
-    INVALID_ITEM_NAMES = tuple(it.chain(INVALID_ITEM_NAMES, (os.path.altsep,)))
-
-HIERARCHY = (A_LABEL, D_LABEL, T_LABEL, S_LABEL)
-
-
-LogEntry = collections.namedtuple('LogEntry', ('logger', 'level', 'message'))
-
-
-@contextlib.contextmanager
-def empty_context():
-    """A context manager that does nothing, mainly useful for unit testing."""
-    yield
-
-
-def item_filter(abs_item_path: pl.Path) -> bool:
-    ext = abs_item_path.suffix
-    return (abs_item_path.is_file() and ext == EXT) or abs_item_path.is_dir()
-
-
-def yield_log_records(ctx_manager_records: typ.Sequence[logging.LogRecord]) -> typ.Generator[LogEntry, None, None]:
-    for lr in ctx_manager_records:
-        yield LogEntry(logger=lr.name, level=lr.levelno, message=lr.getMessage())
+EXTRA_INELIGIBLE_FN = f'EXTRA{tsth.ITEM_FN_SEP}noneligible'
 
 
 class TestLibrary(unittest.TestCase):
-    # @classmethod
-    # def rel_path_from_nums(cls, nums: typ.Sequence[typ.Optional[int]], with_ext: bool=False) -> pl.Path:
-    #     p = pl.Path()
-    #
-    #     for lbl, num in zip(HIERARCHY, nums):
-    #         if num is None:
-    #             continue
-    #
-    #         # This produces a name such that the portion before the underscore is unique for each file in a directory.
-    #         stub = f'{lbl}{num:02}{FUZZY_SEP}{SALT_STR}'
-    #         p = p / stub
-    #
-    #     if with_ext:
-    #         p = p.with_suffix(f'{EXT}')
-    #     return p
-
     def setUp(self):
         self.root_dir_obj = tempfile.TemporaryDirectory()
 
@@ -79,97 +28,30 @@ class TestLibrary(unittest.TestCase):
         dir_hier_map = tsth.gen_default_dir_hier_map()
         tsth.write_dir_hierarchy(root_dir=self.root_dir_pl,
                                  dir_mapping=dir_hier_map,
-                                 item_file_suffix=EXT,
+                                 item_file_suffix=tsth.ITEM_FILE_EXT,
                                  apply_random_salt=True)
-        tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=item_filter)
-        tsth.touch_extra_files(root_dir=self.root_dir_pl, fns=('folder.png', 'output.log'))
-
-        # def deep_touch(path: pl.Path):
-        #     path = self.root_dir_pl / path
-        #     pl.Path(path.parent).mkdir(parents=True, exist_ok=True)
-        #     path.touch(exist_ok=True)
-        #
-        #     # Create other files.
-        #     path.with_name('folder.png').touch(exist_ok=True)
-        #     path.with_name('output.log').touch(exist_ok=True)
-        #     path.with_name('taggu_file.yml').touch(exist_ok=True)
-        #     path.with_name('taggu_self.yml').touch(exist_ok=True)
-        #     path.with_name(EXTRA_INELIGIBLE_FN).touch(exist_ok=True)
-        #
-        # def nums() -> typ.Generator[typ.Sequence[typ.Optional[int]], None, None]:
-        #     # Well-behaved album, disc, and track hierarchy.
-        #     yield (1, 1, 1)
-        #     yield (1, 1, 2)
-        #     yield (1, 1, 3)
-        #     yield (1, 2, 1)
-        #     yield (1, 2, 2)
-        #     yield (1, 2, 3)
-        #
-        #     # Album with a disc and tracks, and loose tracks not on a disc.
-        #     yield (2, 1, 1)
-        #     yield (2, 1, 2)
-        #     yield (2, 1, 3)
-        #     yield (2, None, 1)
-        #     yield (2, None, 2)
-        #     yield (2, None, 3)
-        #
-        #     # Album with discs and tracks, and subtracks on one disc.
-        #     yield (3, 1, 1)
-        #     yield (3, 1, 2)
-        #     yield (3, 1, 3)
-        #     yield (3, 2, 1, 1)
-        #     yield (3, 2, 1, 2)
-        #     yield (3, 2, 2, 1)
-        #     yield (3, 2, 2, 2)
-        #     yield (3, 2, 3)
-        #
-        #     # Album that consists of one file.
-        #     yield (4,)
-        #
-        #     # A very messed-up album.
-        #     yield (5, None, 1)
-        #     yield (5, None, 2)
-        #     yield (5, None, 3)
-        #     yield (5, 1, None, 1)
-        #     yield (5, 1, None, 2)
-        #     yield (5, 2, 1, 1)
-        #     yield (5, 2, 1, 2)
-        #
-        # for num_seq in nums():
-        #     p = self.rel_path_from_nums(num_seq, with_ext=True)
-        #     deep_touch(p)
-
-    @staticmethod
-    def traverse(lib_ctx: tl.LibraryContext, func: typ.Callable[[pl.Path, pl.Path], None]):
-        def helper(curr_rel_path: pl.Path):
-            curr_rel_path, curr_abs_path = lib_ctx.co_norm(rel_sub_path=curr_rel_path)
-
-            func(curr_rel_path, curr_abs_path)
-
-            if curr_abs_path.is_dir():
-                for entry in os.listdir(curr_abs_path):
-                    helper(curr_rel_path / entry)
-
-        helper(pl.Path())
+        tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=tsth.default_item_filter)
+        tsth.touch_extra_files(root_dir=self.root_dir_pl, fns=('folder.png', 'output.log', EXTRA_INELIGIBLE_FN))
 
     def test_gen_library_ctx(self):
         # Normal usage.
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         self.assertEqual(root_dir, lib_ctx.get_root_dir())
-        self.assertIs(item_filter, lib_ctx.get_media_item_filter())
-        self.assertEqual('taggu_self.yml', lib_ctx.get_self_meta_file_name())
-        self.assertEqual('taggu_item.yml', lib_ctx.get_item_meta_file_name())
+        self.assertIs(tsth.default_item_filter, lib_ctx.get_media_item_filter())
+        self.assertEqual(tsth.SELF_META_FN, lib_ctx.get_self_meta_file_name())
+        self.assertEqual(tsth.ITEM_META_FN, lib_ctx.get_item_meta_file_name())
 
         # Test that root dir is normalized.
-        lib_ctx = tl.gen_library_ctx(root_dir=(root_dir / 'dummy' / os.path.pardir), media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=(root_dir / 'dummy' / os.path.pardir),
+                                     media_item_filter=tsth.default_item_filter)
 
         self.assertEqual(root_dir, lib_ctx.get_root_dir())
 
     def test_lib_ctx_co_norm(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         # Normal usage.
         rel_sub_path = pl.Path('TEST')
@@ -185,38 +67,49 @@ class TestLibrary(unittest.TestCase):
 
         # Exception is raised if a path escapes the root dir.
         rel_sub_path = pl.Path(os.path.pardir)
-        with self.assertRaises(tex.EscapingSubpath):
+        with self.assertRaises(tex.EscapingSubpath), self.assertLogs(logger=tl.__name__, level=logging.ERROR) as ctx:
             lib_ctx.co_norm(rel_sub_path=rel_sub_path)
 
-        # Exception is raised if the path is not absolute.
+        msg = (f'Normalized absolute path "{(root_dir / os.path.pardir).resolve()}" '
+               f'is not a sub path of root directory "{root_dir}"')
+        expected_log_records = frozenset((tsth.LogEntry(logger=tl.__name__, level=logging.ERROR, message=msg),))
+        produced_log_records = frozenset(tsth.yield_log_entries(ctx.records))
+        self.assertEqual(expected_log_records, produced_log_records)
+
+        # Exception is raised if the relative path is actually absolute.
         rel_sub_path = pl.Path(root_dir.root)
-        with self.assertRaises(tex.AbsoluteSubpath):
+        with self.assertRaises(tex.AbsoluteSubpath), self.assertLogs(logger=tl.__name__, level=logging.ERROR) as ctx:
             lib_ctx.co_norm(rel_sub_path=rel_sub_path)
+
+        msg = f'Sub path "{rel_sub_path}" is not a relative path'
+        expected_log_records = frozenset((tsth.LogEntry(logger=tl.__name__, level=logging.ERROR, message=msg),))
+        produced_log_records = frozenset(tsth.yield_log_entries(ctx.records))
+        self.assertEqual(expected_log_records, produced_log_records)
 
     def test_lib_ctx_yield_contains_dir(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
-        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
                 # A relative path to a directory yields the directory.
                 expected = (rel_sub_path,)
                 produced = tuple(lib_ctx.yield_contains_dir(rel_sub_path=rel_sub_path))
                 self.assertEqual(expected, produced)
 
-            elif abs_sub_path.is_file():
-                # A relative path to a file yields nothing.
+            else:
+                # A relative path to anything else yields nothing.
                 expected = ()
                 produced = tuple(lib_ctx.yield_contains_dir(rel_sub_path=rel_sub_path))
                 self.assertEqual(expected, produced)
 
-        self.traverse(lib_ctx, helper)
+        tsth.traverse(root_dir=root_dir, func=func)
 
     def test_lib_ctx_yield_siblings_dir(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
-        def helper(rel_sub_path: pl.Path, _: pl.Path):
+        def func(rel_sub_path: pl.Path, _: pl.Path):
             if len(rel_sub_path.parts) == 0:
                 # An empty normalized relative path (i.e. at the root) yields nothing.
                 expected = ()
@@ -229,22 +122,22 @@ class TestLibrary(unittest.TestCase):
                 produced = tuple(lib_ctx.yield_siblings_dir(rel_sub_path=rel_sub_path))
                 self.assertEqual(expected, produced)
 
-        self.traverse(lib_ctx, helper)
+        tsth.traverse(root_dir=root_dir, func=func)
 
     def test_lib_ctx_fuzzy_name_lookup(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
-        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
-                entries: typ.Sequence[str] = tuple(sorted(os.listdir(abs_sub_path)))
+                entries: typ.Sequence[str] = tuple(sorted(os.listdir(str(abs_sub_path))))
 
-                filtered_entries = tuple(entry for entry in entries if item_filter(abs_sub_path / entry))
+                filtered_entries = tuple(entry for entry in entries if tsth.default_item_filter(abs_sub_path / entry))
 
                 for entry in filtered_entries:
                     # Look up each item by its unique first portion.
                     expected = entry
-                    prefix = expected.split(FUZZY_SEP)[0]
+                    prefix = expected.split(tsth.ITEM_FN_SEP)[0]
                     produced = lib_ctx.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_path,
                                                          prefix_item_name=prefix)
                     self.assertEqual(expected, produced)
@@ -257,24 +150,25 @@ class TestLibrary(unittest.TestCase):
                     msg = (f'Incorrect number of matches for fuzzy lookup of "{common_prefix}" '
                            f'in directory "{rel_sub_path}"; '
                            f'expected: 1, found: {len(filtered_entries)}')
-                    expected_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.ERROR, message=msg),)
+                    expected_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                   level=logging.ERROR, message=msg),)
 
                     with self.assertRaises(tex.NonUniqueFuzzyFileLookup), \
                             self.assertLogs(logger=tl.__name__, level=logging.ERROR) as ctx:
                         lib_ctx.fuzzy_name_lookup(rel_sub_dir_path=rel_sub_path, prefix_item_name=common_prefix)
 
-                        produced_log_records = frozenset(yield_log_records(ctx.records))
+                        produced_log_records = frozenset(tsth.yield_log_entries(ctx.records))
                         self.assertEqual(expected_log_records, produced_log_records)
 
-        self.traverse(lib_ctx, helper)
+        tsth.traverse(root_dir=root_dir, func=func)
 
     def test_lib_ctx_item_names_in_dir(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
-        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
-                all_entries: typ.AbstractSet[str] = frozenset(os.listdir(abs_sub_path))
+                all_entries: typ.AbstractSet[str] = frozenset(os.listdir(str(abs_sub_path)))
             else:
                 all_entries: typ.AbstractSet[str] = frozenset()
 
@@ -284,15 +178,15 @@ class TestLibrary(unittest.TestCase):
 
             filtered_entries = all_entries - passed_entries
             for entry in filtered_entries:
-                self.assertFalse(item_filter(abs_sub_path / entry))
+                self.assertFalse(tsth.default_item_filter(abs_sub_path / entry))
             for entry in passed_entries:
-                self.assertTrue(item_filter(abs_sub_path / entry))
+                self.assertTrue(tsth.default_item_filter(abs_sub_path / entry))
 
-        self.traverse(lib_ctx, helper)
+        tsth.traverse(root_dir=root_dir, func=func)
 
     def test_lib_ctx_yield_self_meta_pairs(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         yaml_data = {
             'field_1': 'single_value',
@@ -300,20 +194,20 @@ class TestLibrary(unittest.TestCase):
             'field_3': None,
         }
 
-        def helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
                 expected = ((rel_sub_path, yaml_data),)
                 produced = tuple(lib_ctx.yield_self_meta_pairs(yaml_data=yaml_data,
                                                                rel_sub_dir_path=rel_sub_path))
                 self.assertEqual(expected, produced)
 
-        self.traverse(lib_ctx, helper)
+        tsth.traverse(root_dir=root_dir, func=func)
 
     def test_lib_ctx_yield_item_meta_pairs_a(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
-        def sequence_helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def sequence_func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
                 passed_items = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
                 sorted_passed_items = sorted(passed_items)
@@ -321,7 +215,7 @@ class TestLibrary(unittest.TestCase):
 
                 extra_records = ({f'extra_item': f'extra_value'},)
 
-                # Construct YAML data for exact, too many, and too few numbers of passed items.
+                # Construct YAML data.
                 exact_record_seq = tuple({f'item_{i+1}': f'value_{i+1}'} for i in range(num_passed_items))
                 extra_record_seq = tuple(it.chain(exact_record_seq, extra_records))
                 insuf_record_seq = exact_record_seq[:-1]
@@ -335,9 +229,13 @@ class TestLibrary(unittest.TestCase):
                                                     for _ in range(len(passed_items) - len(insuf_record_seq)))
 
                 # Log records expected.
-                extra_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                extra_data_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                 level=logging.WARNING,
+                                                                 message=msg)
                                                    for msg in extra_data_log_messages)
-                insuf_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                insuf_data_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                 level=logging.WARNING,
+                                                                 message=msg)
                                                    for msg in insuf_data_log_messages)
 
                 # Create a partialed method that generates a logging checker.
@@ -351,9 +249,7 @@ class TestLibrary(unittest.TestCase):
                 )
 
                 for record_seq, expected_log_records in expected_data_and_logs:
-                    ctx_mgr = empty_context
-                    if expected_log_records:
-                        ctx_mgr = logging_ctx_mgr
+                    ctx_mgr = logging_ctx_mgr if expected_log_records else tsth.empty_context
 
                     # Construct YAML data.
                     yaml_data = list(record_seq)
@@ -366,14 +262,14 @@ class TestLibrary(unittest.TestCase):
                         self.assertEqual(expected, produced)
 
                     if ctx:
-                        produced_log_records = frozenset(yield_log_records(ctx.records))
+                        produced_log_records = frozenset(tsth.yield_log_entries(ctx.records))
                         self.assertEqual(expected_log_records, produced_log_records)
 
-        self.traverse(lib_ctx, sequence_helper)
+        tsth.traverse(root_dir=root_dir, func=sequence_func)
 
     def test_lib_ctx_yield_item_meta_pairs_b(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         # Warnings to check for:
         # 1) Invalid item names.
@@ -383,23 +279,23 @@ class TestLibrary(unittest.TestCase):
 
         LookupRecord = collections.namedtuple('LookupRecord', ('item_name', 'fuzzy_item_name', 'meta_block'))
 
-        def mapping_helper(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
+        def mapping_func(rel_sub_path: pl.Path, abs_sub_path: pl.Path):
             if abs_sub_path.is_dir():
                 passed_items = lib_ctx.item_names_in_dir(rel_sub_dir_path=rel_sub_path)
                 sorted_passed_items = sorted(passed_items)
 
                 extra_records = tuple(LookupRecord(item_name=EXTRA_INELIGIBLE_FN,
-                                                   fuzzy_item_name=EXTRA_INELIGIBLE_FN.split(FUZZY_SEP)[0],
+                                                   fuzzy_item_name=EXTRA_INELIGIBLE_FN.split(tsth.ITEM_FN_SEP)[0],
                                                    meta_block={f'extra_item': f'extra_value'})
                                       for _ in abs_sub_path.glob(EXTRA_INELIGIBLE_FN))
                 inval_records = tuple(LookupRecord(item_name=invalid_item_name,
                                                    fuzzy_item_name=invalid_item_name,
                                                    meta_block={f'inval_item': f'inval_value'})
-                                      for invalid_item_name in INVALID_ITEM_NAMES)
+                                      for invalid_item_name in tsth.yield_invalid_fns())
 
                 # Construct YAML data.
                 exact_record_seq = tuple(LookupRecord(item_name=item_name,
-                                                      fuzzy_item_name=item_name.split(FUZZY_SEP)[0],
+                                                      fuzzy_item_name=item_name.split(tsth.ITEM_FN_SEP)[0],
                                                       meta_block={f'item_{i+1}': f'value_{i+1}'})
                                          for i, item_name in enumerate(sorted_passed_items))
                 extra_record_seq = tuple(it.chain(exact_record_seq, extra_records))
@@ -414,14 +310,20 @@ class TestLibrary(unittest.TestCase):
                 insuf_data_log_messages = frozenset(f'Found 1 eligible item remaining not referenced in metadata'
                                                     for _ in range(len(passed_items) - len(insuf_record_seq)))
                 inval_data_log_messages = frozenset(f'Item name "{invalid_item_name}" is not valid, skipping'
-                                                    for invalid_item_name in INVALID_ITEM_NAMES)
+                                                    for invalid_item_name in tsth.yield_invalid_fns())
 
                 # Log records expected.
-                extra_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                extra_data_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                 level=logging.WARNING,
+                                                                 message=msg)
                                                    for msg in extra_data_log_messages)
-                insuf_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                insuf_data_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                 level=logging.WARNING,
+                                                                 message=msg)
                                                    for msg in insuf_data_log_messages)
-                inval_data_log_records = frozenset(LogEntry(logger=tl.__name__, level=logging.WARNING, message=msg)
+                inval_data_log_records = frozenset(tsth.LogEntry(logger=tl.__name__,
+                                                                 level=logging.WARNING,
+                                                                 message=msg)
                                                    for msg in inval_data_log_messages)
 
                 # Create a partialed method that generates a logging checker.
@@ -436,9 +338,7 @@ class TestLibrary(unittest.TestCase):
                 )
 
                 for record_seq, expected_log_records in expected_data_and_logs:
-                    ctx_mgr = empty_context
-                    if expected_log_records:
-                        ctx_mgr = logging_ctx_mgr
+                    ctx_mgr = logging_ctx_mgr if expected_log_records else tsth.empty_context
 
                     # Construct YAML data.
                     yaml_data = {r.fuzzy_item_name: r.meta_block for r in record_seq}
@@ -448,22 +348,17 @@ class TestLibrary(unittest.TestCase):
                                     for r in record_seq if r.item_name in passed_items}
                         produced = {k: v for k, v in lib_ctx.yield_item_meta_pairs(yaml_data=yaml_data,
                                                                                    rel_sub_dir_path=rel_sub_path)}
-                        # print('* Current Dir:', rel_sub_path)
-                        # print('* Items in Dir:', tuple(abs_sub_path.iterdir()))
-                        # print('* YAML Data:', yaml_data)
-                        # print('* Expected Logs:', expected_log_records)
-                        # print()
                         self.assertEqual(expected, produced)
 
                     if ctx:
-                        produced_log_records = frozenset(yield_log_records(ctx.records))
+                        produced_log_records = frozenset(tsth.yield_log_entries(ctx.records))
                         self.assertEqual(expected_log_records, produced_log_records)
 
-        self.traverse(lib_ctx, mapping_helper)
+        tsth.traverse(root_dir=root_dir, func=mapping_func)
 
     def test_lib_ctx_yield_meta_source_specs(self):
         root_dir = self.root_dir_pl
-        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=item_filter)
+        lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         expected = (
             (pl.Path(lib_ctx.get_item_meta_file_name()), lib_ctx.yield_siblings_dir, lib_ctx.yield_item_meta_pairs),

@@ -18,7 +18,7 @@ LabelExtractor = typ.Callable[[pl.Path], str]
 FieldValueGen = typ.Generator[tt.FieldValue, None, None]
 
 
-class LookupContext(abc.ABC):
+class QueryContext(abc.ABC):
     """Handles retrieving individual fields from metadata for an item."""
 
     @classmethod
@@ -129,10 +129,10 @@ class LookupContext(abc.ABC):
 
 
 def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
-                   label_ext: typ.Optional[LabelExtractor]) -> LookupContext:
+                   label_ext: typ.Optional[LabelExtractor]) -> QueryContext:
     meta_cache = {}
 
-    class LC(LookupContext):
+    class QC(QueryContext):
         @classmethod
         def get_discovery_context(cls) -> td.DiscoveryContext:
             """Returns the discovery context used in this lookup context."""
@@ -165,4 +165,4 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
                 elif isinstance(value, collections.abc.Sequence):
                     yield from value
 
-    return LC()
+    return QC()
