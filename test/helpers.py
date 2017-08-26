@@ -9,6 +9,7 @@ import os.path
 import yaml
 
 import taggu.types as tt
+import taggu.helpers as th
 
 DirectoryHierarchyMapping = typ.Mapping[str, typ.Optional['DirectoryHierarchyMapping']]
 TraverseVisitorFunc = typ.Callable[[pl.Path, pl.Path], None]
@@ -43,6 +44,11 @@ class LogEntry(typ.NamedTuple):
 def empty_context() -> typ.Generator[None, None, None]:
     """A context manager that does nothing, mainly useful for unit testing."""
     yield
+
+
+def default_item_filter(abs_item_path: pl.Path) -> bool:
+    ext = abs_item_path.suffix
+    return (abs_item_path.is_file() and ext == ITEM_FILE_EXT) or abs_item_path.is_dir()
 
 
 def gen_default_dir_hier_map() -> DirectoryHierarchyMapping:
@@ -150,13 +156,21 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
     helper(curr_dir_mapping=dir_mapping)
 
 
+def gen_item_metadata(rel_item_path: pl.Path) -> typ.Any:
+    return {ITEM_META_KEY: ITEM_META_STR_TEMPLATE.format(rel_item_path)}
+
+
+def gen_self_metadata(rel_item_path: pl.Path) -> typ.Any:
+    return {SELF_META_KEY: SELF_META_STR_TEMPLATE.format(rel_item_path)}
+
+
 def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None:
     def helper(curr_rel_path: pl.Path=pl.Path()):
         curr_abs_path = root_dir / curr_rel_path
         if curr_abs_path.is_dir():
             # Create self meta file.
             with (curr_abs_path / SELF_META_FN).open(mode='w') as stream:
-                data = {SELF_META_KEY: SELF_META_STR_TEMPLATE.format(curr_rel_path)}
+                data = gen_self_metadata(curr_rel_path)
                 yaml.dump(data, stream)
 
             # Create item meta file.
@@ -167,7 +181,7 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None
                     helper(curr_rel_path=(curr_rel_path / item_name))
 
                 if item_filter is None or item_filter(abs_entry):
-                    data[item_name] = {ITEM_META_KEY: ITEM_META_STR_TEMPLATE.format(curr_rel_path / item_name)}
+                    data[item_name] = gen_item_metadata(curr_rel_path / item_name)
 
             with (curr_abs_path / ITEM_META_FN).open(mode='w') as stream:
                 yaml.dump(data, stream)
@@ -221,3 +235,7 @@ def yield_invalid_fns() -> typ.Generator[str, None, None]:
 
 def default_item_filter(abs_item_path: pl.Path) -> bool:
     return (abs_item_path.is_file() and abs_item_path.suffix == ITEM_FILE_EXT) or abs_item_path.is_dir()
+
+
+def is_meta_file_path(abs_path: pl.Path) -> bool:
+    return abs_path.name in {SELF_META_FN, ITEM_META_FN}

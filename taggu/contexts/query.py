@@ -2,6 +2,7 @@ import abc
 import pathlib as pl
 import typing as typ
 import collections.abc
+import itertools as it
 
 import taggu.contexts.library as tlib
 import taggu.contexts.discovery as td
@@ -115,7 +116,13 @@ class QueryContext(abc.ABC):
                     logger.info(f'Found meta file "{rel_meta_path}" for item "{rel_item_path}", processing')
 
                     for ip, md in discovery_context.items_from_meta_file(rel_meta_path=rel_meta_path):
-                        meta_cache[ip] = md
+                        # TODO: Allow option of overwriting entire dict or just fields.
+                        # # Overwrite entire dict.
+                        # meta_cache[ip] = md
+
+                        # Overwrite new fields.
+                        ex_cache = typ.cast(typ.MutableMapping, meta_cache.setdefault(ip, {}))
+                        meta_cache[ip] = {k: v for k, v in it.chain(ex_cache.items(), md.items())}
                 else:
                     logger.debug(f'Meta file "{rel_meta_path}" does not exist '
                                  f'for item "{rel_item_path}", skipping')
@@ -130,7 +137,7 @@ class QueryContext(abc.ABC):
 
 def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
                    label_ext: typ.Optional[LabelExtractor]) -> QueryContext:
-    meta_cache = {}
+    meta_cache: tt.MetadataCache = {}
 
     class QC(QueryContext):
         @classmethod
@@ -164,5 +171,11 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
                     yield value
                 elif isinstance(value, collections.abc.Sequence):
                     yield from value
+            # else:
+            #     import pprint
+            #     meta_dict_dump = pprint.pformat(meta_dict)
+            #     meta_cache_dump = pprint.pformat(meta_cache)
+            #     print(f'Could not find field name "{field_name}", for rel path "{rel_item_path}"\n'
+            #           f'resulting dict = {meta_dict_dump}\nresulting cache = {meta_cache_dump}')
 
     return QC()
