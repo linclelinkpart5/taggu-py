@@ -36,7 +36,7 @@ class DiscoveryContext(abc.ABC):
     @abc.abstractmethod
     def items_from_meta_file(cls, rel_meta_path: pl.Path) -> tt.PathMetadataPairGen:
         """Given a meta file path, yields all item paths that this meta file provides metadata for, along with the
-        metadata itself and the meta source type.
+        metadata itself.
         """
         pass
 
@@ -59,6 +59,7 @@ def gen_discovery_ctx(*, library_context: tlib.LibraryContext) -> DiscoveryConte
 
         @classmethod
         def meta_files_from_item(cls, rel_item_path: pl.Path) -> tt.PathGen:
+            logger.info(f'Looking up meta files for item "{rel_item_path}"')
             meta_specs: tt.MetaSourceSpecGen = library_context.yield_meta_source_specs()
             for meta_spec in meta_specs:
                 meta_file_name: pl.Path = meta_spec.meta_file_name
@@ -80,7 +81,7 @@ def gen_discovery_ctx(*, library_context: tlib.LibraryContext) -> DiscoveryConte
         @classmethod
         def items_from_meta_file(cls, rel_meta_path: pl.Path) -> tt.PathMetadataPairGen:
             """Given a meta file path, yields all item paths that this meta file provides metadata for, along with the
-            metadata itself and the meta source type.
+            metadata itself.
             """
             rel_meta_path, abs_meta_path = library_context.co_norm(rel_sub_path=rel_meta_path)
 

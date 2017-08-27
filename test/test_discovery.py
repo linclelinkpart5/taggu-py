@@ -175,10 +175,10 @@ class TestDiscovery(unittest.TestCase):
 
         def helper(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             def yielder():
-                if curr_rel_path != curr_rel_path.parent:
-                    yield curr_rel_path.parent / META_ITEM
                 if curr_abs_path.is_dir():
                     yield curr_rel_path / META_SELF
+                if curr_rel_path != curr_rel_path.parent:
+                    yield curr_rel_path.parent / META_ITEM
 
             expected = tuple(yielder())
             produced = tuple(dis_ctx.meta_files_from_item(rel_item_path=curr_rel_path))

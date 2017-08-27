@@ -361,8 +361,8 @@ class TestLibrary(unittest.TestCase):
         lib_ctx = tl.gen_library_ctx(root_dir=root_dir, media_item_filter=tsth.default_item_filter)
 
         expected = (
-            (pl.Path(lib_ctx.get_item_meta_file_name()), lib_ctx.yield_siblings_dir, lib_ctx.yield_item_meta_pairs),
             (pl.Path(lib_ctx.get_self_meta_file_name()), lib_ctx.yield_contains_dir, lib_ctx.yield_self_meta_pairs),
+            (pl.Path(lib_ctx.get_item_meta_file_name()), lib_ctx.yield_siblings_dir, lib_ctx.yield_item_meta_pairs),
         )
         produced = tuple(lib_ctx.yield_meta_source_specs())
         self.assertEqual(expected, produced)

@@ -94,39 +94,42 @@ class LibraryContext(abc.ABC):
         return abs_found_path.name
 
     @classmethod
-    def item_names_in_dir(cls, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
-        """Finds item names in a given directory. These items must pass a filter in order to be selected."""
+    def yield_item_paths_in_dir(cls, rel_sub_dir_path: pl.Path) -> tt.PathGen:
         rel_sub_dir_path, abs_sub_dir_path = cls.co_norm(rel_sub_path=rel_sub_dir_path)
+        root_dir = cls.get_root_dir()
 
         logger.info(f'Looking for valid items in directory "{rel_sub_dir_path}"')
 
-        count = 0
-
         media_item_filter = cls.get_media_item_filter()
 
-        def helper():
-            # Make sure the path is a directory.
-            # If not, we yield nothing.
-            nonlocal count
-            if abs_sub_dir_path.is_dir():
-                for item in abs_sub_dir_path.iterdir():
-                    count += 1
-                    item_name = item.name
+        # Make sure the path is a directory.
+        # If not, we yield nothing.
+        if abs_sub_dir_path.is_dir():
+            for abs_item_path in abs_sub_dir_path.iterdir():
+                rel_item_path = abs_item_path.relative_to(root_dir)
 
-                    if media_item_filter is not None:
-                        if media_item_filter(item):
-                            logger.debug(f'Item "{item_name}" passed filter, marking as eligible')
-                            yield item_name
-                        else:
-                            logger.debug(f'Item "{item_name}" failed filter, skipping')
+                if media_item_filter is not None:
+                    if media_item_filter(abs_item_path):
+                        logger.debug(f'Item "{rel_item_path}" passed filter, marking as eligible')
+                        yield abs_item_path
                     else:
-                        logger.debug(f'Marking item "{item_name}" as eligible')
-                        yield item_name
+                        logger.debug(f'Item "{rel_item_path}" failed filter, skipping')
+                else:
+                    logger.debug(f'Marking item "{rel_item_path}" as eligible')
+                    yield abs_item_path
 
-        vals = frozenset(helper())
-        logger.info(f'Found {th.pluralize(len(vals), "eligible item")} out of {count} '
-                    f'in directory "{rel_sub_dir_path}"')
-        return vals
+    @classmethod
+    def item_names_in_dir(cls, rel_sub_dir_path: pl.Path) -> typ.AbstractSet[str]:
+        """Finds item names in a given directory. These items must pass a filter in order to be selected."""
+        return frozenset(p.name for p in cls.yield_item_paths_in_dir(rel_sub_dir_path=rel_sub_dir_path))
+
+    @classmethod
+    def sorted_item_names_in_dir(cls, rel_sub_dir_path: pl.Path) -> typ.Sequence[str]:
+        media_item_sort_key: tt.ItemSortKey = cls.get_media_item_sort_key()
+
+        results = tuple(p.name for p in sorted(cls.yield_item_paths_in_dir(rel_sub_dir_path=rel_sub_dir_path),
+                                               key=media_item_sort_key))
+        return results
 
     @classmethod
     def yield_item_meta_pairs(cls, yaml_data: typ.Any, rel_sub_dir_path: pl.Path) -> tt.PathMetadataPairGen:
@@ -193,14 +196,14 @@ class LibraryContext(abc.ABC):
     def yield_meta_source_specs(cls) -> tt.MetaSourceSpecGen:
         """Yields the meta source specifications for where to obtain data.
         The order these specifications are emitted designates their priority;
-        later specifications override previous ones in the case of a conflict.
+        earlier is higher priority in the case of a conflict.
         """
-        yield tt.MetaSourceSpec(meta_file_name=pl.Path(cls.get_item_meta_file_name()),
-                                dir_getter=cls.yield_siblings_dir,
-                                multiplexer=cls.yield_item_meta_pairs)
         yield tt.MetaSourceSpec(meta_file_name=pl.Path(cls.get_self_meta_file_name()),
                                 dir_getter=cls.yield_contains_dir,
                                 multiplexer=cls.yield_self_meta_pairs)
+        yield tt.MetaSourceSpec(meta_file_name=pl.Path(cls.get_item_meta_file_name()),
+                                dir_getter=cls.yield_siblings_dir,
+                                multiplexer=cls.yield_item_meta_pairs)
 
 
 def gen_library_ctx(*,

@@ -30,7 +30,7 @@ class QueryContext(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def get_meta_cache(cls) -> tt.MetadataCache:
+    def get_meta_file_cache(cls) -> tt.MetaFileCache:
         pass
 
     @classmethod
@@ -99,45 +99,34 @@ class QueryContext(abc.ABC):
         yield from helper(rel_item_path, max_distance)
 
     @classmethod
-    def cache_item(cls, *, rel_item_path: pl.Path):
-        meta_cache = cls.get_meta_cache()
-        discovery_context = cls.get_discovery_context()
-        library_context = discovery_context.get_library_context()
+    def cache_meta_file(cls, *, rel_meta_path: pl.Path, force: bool=False):
+        meta_file_cache: tt.MetaFileCache = cls.get_meta_file_cache()
+        dis_ctx: td.DiscoveryContext = cls.get_discovery_context()
 
-        if rel_item_path in meta_cache:
-            logger.debug(f'Found item "{rel_item_path}" in cache, using cached results')
+        if force:
+            logger.debug(f'Defeating cache for meta file "{rel_meta_path}"')
+            meta_file_cache.pop(rel_meta_path, None)
 
+        if rel_meta_path in meta_file_cache:
+            logger.debug(f'Found meta file "{rel_meta_path}" in cache, using cached results')
         else:
-            logger.debug(f'Item "{rel_item_path}" not found in cache, processing meta files')
-            for rel_meta_path in discovery_context.meta_files_from_item(rel_item_path):
-                rel_meta_path, abs_meta_path = library_context.co_norm(rel_sub_path=rel_meta_path)
+            logger.debug(f'Meta file "{rel_meta_path}" not found in cache, processing meta files')
 
-                if abs_meta_path.is_file():
-                    logger.info(f'Found meta file "{rel_meta_path}" for item "{rel_item_path}", processing')
-
-                    for ip, md in discovery_context.items_from_meta_file(rel_meta_path=rel_meta_path):
-                        # TODO: Allow option of overwriting entire dict or just fields.
-                        # # Overwrite entire dict.
-                        # meta_cache[ip] = md
-
-                        # Overwrite new fields.
-                        ex_cache = typ.cast(typ.MutableMapping, meta_cache.setdefault(ip, {}))
-                        meta_cache[ip] = {k: v for k, v in it.chain(ex_cache.items(), md.items())}
-                else:
-                    logger.debug(f'Meta file "{rel_meta_path}" does not exist '
-                                 f'for item "{rel_item_path}", skipping')
+            meta_file_cache[rel_meta_path] = {}
+            for rel_item_path, metadata in dis_ctx.items_from_meta_file(rel_meta_path=rel_meta_path):
+                meta_file_cache[rel_meta_path][rel_item_path] = metadata
 
     @classmethod
     def clear_cache(cls):
         # TODO: Add number of items deleted to log message.
-        meta_cache = cls.get_meta_cache()
-        meta_cache.clear()
-        logger.info(f'Metadata cache cleared')
+        cache = cls.get_meta_file_cache()
+        cache.clear()
+        logger.info(f'Meta file cache cleared')
 
 
 def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
                    label_ext: typ.Optional[LabelExtractor]) -> QueryContext:
-    meta_cache: tt.MetadataCache = {}
+    meta_file_cache: tt.MetaFileCache = {}
 
     class QC(QueryContext):
         @classmethod
@@ -146,36 +135,58 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
             return discovery_context
 
         @classmethod
-        def get_meta_cache(cls) -> tt.MetadataCache:
-            return meta_cache
+        def get_meta_file_cache(cls) -> tt.MetaFileCache:
+            return meta_file_cache
 
         @classmethod
         def yield_field(cls, *,
                         rel_item_path: pl.Path,
                         field_name: str,
                         labels: typ.Optional[LabelContainer]=None) -> FieldValueGen:
-            """Given a relative item path and a field name, yields all metadata entries matching that field for that item.
+            """Given a relative item path and a field name, yields metadata entries matching that field for that item.
             Only direct metadata for that item is looked up, no parent or child metadata is used.
             """
+            logger.debug(f'Looking up field "{field_name}" for item file "{rel_item_path}"')
             if labels is not None and label_ext is not None:
-                if label_ext(rel_item_path) not in labels:
+                extracted_label = label_ext(rel_item_path)
+                if extracted_label not in labels:
+                    logger.info(f'Item "{rel_item_path}" with label "{extracted_label}" '
+                                f'did not match any expected labels, skipping')
                     return
+                else:
+                    logger.debug(f'Item "{rel_item_path}" with label "{extracted_label}" matched expected labels')
 
-            cls.cache_item(rel_item_path=rel_item_path)
+            for rel_meta_path in discovery_context.meta_files_from_item(rel_item_path):
+                logger.debug(f'Looking up meta file "{rel_meta_path}" for item "{rel_item_path}"')
+                cls.cache_meta_file(rel_meta_path=rel_meta_path)
 
-            meta_dict = meta_cache.get(rel_item_path, {})
-            if field_name in meta_dict:
-                value = meta_dict[field_name]
+                if rel_meta_path in meta_file_cache:
+                    logger.info(f'Found meta file "{rel_meta_path}" in cache')
 
-                if isinstance(value, str):
-                    yield value
-                elif isinstance(value, collections.abc.Sequence):
-                    yield from value
-            # else:
-            #     import pprint
-            #     meta_dict_dump = pprint.pformat(meta_dict)
-            #     meta_cache_dump = pprint.pformat(meta_cache)
-            #     print(f'Could not find field name "{field_name}", for rel path "{rel_item_path}"\n'
-            #           f'resulting dict = {meta_dict_dump}\nresulting cache = {meta_cache_dump}')
+                    if rel_item_path in meta_file_cache[rel_meta_path]:
+                        logger.info(f'Found item file "{rel_item_path}" in cache for meta file "{rel_meta_path}"')
+
+                        if field_name in meta_file_cache[rel_meta_path][rel_item_path]:
+                            logger.info(f'Found field "{field_name}" in cache for item file "{rel_item_path}"')
+                            found_field_data = meta_file_cache[rel_meta_path][rel_item_path][field_name]
+
+                            if found_field_data is None:
+                                yield None
+                            elif isinstance(found_field_data, str):
+                                yield found_field_data
+                            elif isinstance(found_field_data, collections.abc.Sequence):
+                                yield from found_field_data
+
+                        else:
+                            logger.info(f'Field "{field_name}" not found in cache for item file "{rel_item_path}", '
+                                        f'skipping')
+                            return
+                    else:
+                        logger.info(f'Item "{rel_item_path}" not found in cache for meta file "{rel_meta_path}", '
+                                    f'skipping')
+                        return
+                else:
+                    logger.info(f'Meta file "{rel_meta_path}" not found in cache, skipping')
+                    return
 
     return QC()
