@@ -29,14 +29,14 @@ class TestQuery(unittest.TestCase):
                                  apply_random_salt=True)
         tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=tsth.default_item_filter)
 
-    def test_get_meta_cache(self):
-        # TODO: Create label extractor in helpers.
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_ext=None)
-
-        # Meta file cache starts out empty.
-        expected = {}
-        produced = qry_ctx.get_meta_file_cache()
-        self.assertEqual(expected, produced)
+    # def test_get_meta_cache(self):
+    #     # TODO: Create label extractor in helpers.
+    #     qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx)
+    #
+    #     # Meta file cache starts out empty.
+    #     expected = {}
+    #     produced = qry_ctx.get_meta_file_cache()
+    #     self.assertEqual(expected, produced)
 
     # def test_all_meta_files_present(self):
     #     root_dir = self.root_dir_pl
@@ -49,21 +49,20 @@ class TestQuery(unittest.TestCase):
     #     tsth.traverse(root_dir=root_dir, func=func, action_filter=lambda a: a.is_dir())
 
     def test_yield_field(self):
-        # TODO: Create label extractor in helpers.
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_ext=None)
+        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx)
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             # Validate item metadata.
-            expected = (tsth.ITEM_META_STR_TEMPLATE.format(curr_rel_path),) if curr_rel_path.parts else ()
+            expected = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(curr_rel_path),) if curr_rel_path.parts else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.ITEM_META_KEY))
+                                                 field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(curr_rel_path)))
             self.assertEqual(expected, produced)
 
             # Validate self metadata.
-            expected = (tsth.SELF_META_STR_TEMPLATE.format(curr_rel_path),) if curr_abs_path.is_dir() else ()
+            expected = (tsth.SELF_META_VAL_STR_TEMPLATE.format(curr_rel_path),) if curr_abs_path.is_dir() else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.SELF_META_KEY))
+                                                 field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(curr_rel_path)))
             self.assertEqual(expected, produced)
 
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
@@ -90,5 +89,5 @@ if __name__ == '__main__':
     logging.getLogger(td.__name__).setLevel(level=logging.WARNING)
     logging.getLogger(tl.__name__).setLevel(level=logging.WARNING)
     logging.getLogger(th.__name__).setLevel(level=logging.WARNING)
-    # logging.getLogger(tq.__name__).setLevel(level=logging.WARNING)
+    logging.getLogger(tq.__name__).setLevel(level=logging.WARNING)
     unittest.main()

@@ -68,13 +68,21 @@ class LibraryContext(abc.ABC):
     def yield_contains_dir(cls, rel_sub_path: pl.Path) -> tt.PathGen:
         rel_sub_path, abs_sub_path = cls.co_norm(rel_sub_path=rel_sub_path)
         if abs_sub_path.is_dir():
+            logger.debug(f'Yielding contains dir for sub path "{rel_sub_path}"')
             yield rel_sub_path
+        else:
+            logger.debug(f'Sub path "{rel_sub_path}" is not a directory, skipping')
+            return
 
     @classmethod
     def yield_siblings_dir(cls, rel_sub_path: pl.Path) -> tt.PathGen:
         par_dir = rel_sub_path.parent
         if par_dir != rel_sub_path:
+            logger.debug(f'Yielding siblings dir for sub path "{rel_sub_path}"')
             yield par_dir
+        else:
+            logger.debug(f'Sub path "{rel_sub_path}" is at relative root, skipping')
+            return
 
     @classmethod
     def fuzzy_name_lookup(cls, *, rel_sub_dir_path: pl.Path, prefix_item_name: str) -> str:

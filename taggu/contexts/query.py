@@ -30,15 +30,9 @@ class QueryContext(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def get_meta_file_cache(cls) -> tt.MetaFileCache:
-        pass
-
-    @classmethod
-    @abc.abstractmethod
     def yield_field(cls, *,
                     rel_item_path: pl.Path,
-                    field_name: str,
-                    labels: typ.Optional[LabelContainer]=None) -> FieldValueGen:
+                    field_name: str) -> FieldValueGen:
         """Given a relative item path and a field name, yields all metadata entries matching that field for that item.
         Only direct metadata for that item is looked up, no parent or child metadata is used.
         """
@@ -48,7 +42,6 @@ class QueryContext(abc.ABC):
     def yield_parent_fields(cls, *,
                             rel_item_path: pl.Path,
                             field_name: str,
-                            labels: typ.Optional[LabelContainer]=None,
                             max_distance: typ.Optional[int]=None) -> FieldValueGen:
         paths = rel_item_path.parents
 
@@ -57,7 +50,7 @@ class QueryContext(abc.ABC):
 
         found = False
         for path in paths:
-            for field_val in cls.yield_field(rel_item_path=path, field_name=field_name, labels=labels):
+            for field_val in cls.yield_field(rel_item_path=path, field_name=field_name):
                 yield field_val
                 found = True
 
@@ -68,7 +61,6 @@ class QueryContext(abc.ABC):
     def yield_child_fields(cls, *,
                            rel_item_path: pl.Path,
                            field_name: str,
-                           labels: typ.Optional[LabelContainer]=None,
                            max_distance: typ.Optional[int]=None) -> FieldValueGen:
         # TODO: This function has issues with cyclic folder hierarchies, fix.
         dis_ctx: td.DiscoveryContext = cls.get_discovery_context()
@@ -79,14 +71,11 @@ class QueryContext(abc.ABC):
 
             # Only try and process children if this item is a directory.
             if aip.is_dir() and (md is None or md > 0):
-                child_item_names = th.item_discovery(abs_dir_path=aip, item_filter=lib_ctx.get_media_item_filter())
-
-                # TODO: Consider a LibraryContext.sorted_items_in_dir method.
-                for child_item_name in sorted(child_item_names, key=lib_ctx.get_media_item_sort_key()):
+                for child_item_name in lib_ctx.sorted_item_names_in_dir(rel_sub_dir_path=rip):
                     rel_child_path = rip / child_item_name
 
                     found = False
-                    fields = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name, labels=labels)
+                    fields = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name)
 
                     for field in fields:
                         yield field
@@ -98,36 +87,8 @@ class QueryContext(abc.ABC):
 
         yield from helper(rel_item_path, max_distance)
 
-    @classmethod
-    def cache_meta_file(cls, *, rel_meta_path: pl.Path, force: bool=False):
-        meta_file_cache: tt.MetaFileCache = cls.get_meta_file_cache()
-        dis_ctx: td.DiscoveryContext = cls.get_discovery_context()
 
-        if force:
-            logger.debug(f'Defeating cache for meta file "{rel_meta_path}"')
-            meta_file_cache.pop(rel_meta_path, None)
-
-        if rel_meta_path in meta_file_cache:
-            logger.debug(f'Found meta file "{rel_meta_path}" in cache, using cached results')
-        else:
-            logger.debug(f'Meta file "{rel_meta_path}" not found in cache, processing meta files')
-
-            meta_file_cache[rel_meta_path] = {}
-            for rel_item_path, metadata in dis_ctx.items_from_meta_file(rel_meta_path=rel_meta_path):
-                meta_file_cache[rel_meta_path][rel_item_path] = metadata
-
-    @classmethod
-    def clear_cache(cls):
-        # TODO: Add number of items deleted to log message.
-        cache = cls.get_meta_file_cache()
-        cache.clear()
-        logger.info(f'Meta file cache cleared')
-
-
-def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
-                   label_ext: typ.Optional[LabelExtractor]) -> QueryContext:
-    meta_file_cache: tt.MetaFileCache = {}
-
+def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext) -> QueryContext:
     class QC(QueryContext):
         @classmethod
         def get_discovery_context(cls) -> td.DiscoveryContext:
@@ -135,58 +96,42 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
             return discovery_context
 
         @classmethod
-        def get_meta_file_cache(cls) -> tt.MetaFileCache:
-            return meta_file_cache
-
-        @classmethod
         def yield_field(cls, *,
                         rel_item_path: pl.Path,
-                        field_name: str,
-                        labels: typ.Optional[LabelContainer]=None) -> FieldValueGen:
+                        field_name: str) -> FieldValueGen:
             """Given a relative item path and a field name, yields metadata entries matching that field for that item.
             Only direct metadata for that item is looked up, no parent or child metadata is used.
             """
-            logger.debug(f'Looking up field "{field_name}" for item file "{rel_item_path}"')
-            if labels is not None and label_ext is not None:
-                extracted_label = label_ext(rel_item_path)
-                if extracted_label not in labels:
-                    logger.info(f'Item "{rel_item_path}" with label "{extracted_label}" '
-                                f'did not match any expected labels, skipping')
-                    return
-                else:
-                    logger.debug(f'Item "{rel_item_path}" with label "{extracted_label}" matched expected labels')
-
             for rel_meta_path in discovery_context.meta_files_from_item(rel_item_path):
-                logger.debug(f'Looking up meta file "{rel_meta_path}" for item "{rel_item_path}"')
-                cls.cache_meta_file(rel_meta_path=rel_meta_path)
+                temp_cache: typ.MutableMapping[pl.Path, tt.Metadata] = {
+                    k: v for k, v in discovery_context.items_from_meta_file(rel_meta_path=rel_meta_path)
+                }
 
-                if rel_meta_path in meta_file_cache:
-                    logger.info(f'Found meta file "{rel_meta_path}" in cache')
+                if rel_item_path in temp_cache:
+                    meta_dict = temp_cache[rel_item_path]
 
-                    if rel_item_path in meta_file_cache[rel_meta_path]:
-                        logger.info(f'Found item file "{rel_item_path}" in cache for meta file "{rel_meta_path}"')
+                    if field_name in meta_dict:
+                        logger.debug(f'Found field "{field_name}" for item "{rel_item_path}" '
+                                     f'in meta file "{rel_meta_path}"')
 
-                        if field_name in meta_file_cache[rel_meta_path][rel_item_path]:
-                            logger.info(f'Found field "{field_name}" in cache for item file "{rel_item_path}"')
-                            found_field_data = meta_file_cache[rel_meta_path][rel_item_path][field_name]
+                        field_val = meta_dict[field_name]
 
-                            if found_field_data is None:
-                                yield None
-                            elif isinstance(found_field_data, str):
-                                yield found_field_data
-                            elif isinstance(found_field_data, collections.abc.Sequence):
-                                yield from found_field_data
+                        if field_val is None:
+                            yield None
+                        elif isinstance(field_val, str):
+                            yield field_val
+                        elif isinstance(field_val, collections.abc.Sequence):
+                            yield from field_val
 
-                        else:
-                            logger.info(f'Field "{field_name}" not found in cache for item file "{rel_item_path}", '
-                                        f'skipping')
-                            return
-                    else:
-                        logger.info(f'Item "{rel_item_path}" not found in cache for meta file "{rel_meta_path}", '
-                                    f'skipping')
+                        # No need to look at other meta files, just return.
                         return
+                    else:
+                        logger.debug(f'Field "{field_name}" for item "{rel_item_path}" not found '
+                                     f'in meta file "{rel_meta_path}", skipping')
+
                 else:
-                    logger.info(f'Meta file "{rel_meta_path}" not found in cache, skipping')
+                    logger.info(f'Field "{field_name}" for item "{rel_item_path}" not found in meta file '
+                                f'"{rel_meta_path}", trying next meta file, if available')
                     return
 
     return QC()

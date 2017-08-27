@@ -26,10 +26,10 @@ ITEM_META_FN = 'taggu_item.yml'
 ITEM_FILE_EXT = '.flac'
 ITEM_FN_SEP = '_'
 
-SELF_META_KEY = 'self'
-ITEM_META_KEY = 'item'
-SELF_META_STR_TEMPLATE = 'self metadata for target "{}"'
-ITEM_META_STR_TEMPLATE = 'item metadata for target "{}"'
+SELF_META_KEY_STR_TEMPLATE = 'self key {}'
+ITEM_META_KEY_STR_TEMPLATE = 'item key {}'
+SELF_META_VAL_STR_TEMPLATE = 'self metadata for target "{}"'
+ITEM_META_VAL_STR_TEMPLATE = 'item metadata for target "{}"'
 
 RANDOM_SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
@@ -157,11 +157,11 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
 
 
 def gen_item_metadata(rel_item_path: pl.Path) -> typ.Any:
-    return {ITEM_META_KEY: ITEM_META_STR_TEMPLATE.format(rel_item_path)}
+    return {ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path): ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path)}
 
 
 def gen_self_metadata(rel_item_path: pl.Path) -> typ.Any:
-    return {SELF_META_KEY: SELF_META_STR_TEMPLATE.format(rel_item_path)}
+    return {SELF_META_KEY_STR_TEMPLATE.format(rel_item_path): SELF_META_VAL_STR_TEMPLATE.format(rel_item_path)}
 
 
 def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None:
