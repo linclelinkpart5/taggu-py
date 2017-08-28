@@ -75,15 +75,16 @@ class QueryContext(abc.ABC):
                     rel_child_path = rip / child_item_name
 
                     found = False
-                    fields = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name)
+                    field_vals = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name)
 
-                    for field in fields:
-                        yield field
+                    for field_val in field_vals:
+                        yield field_val
                         found = True
 
                     if not found:
+                        # If this child did not have the field, try its children.
                         next_max_distance = md - 1 if md is not None else None
-                        yield from helper(rel_child_path, next_max_distance)
+                        yield from helper(rip=rel_child_path, md=next_max_distance)
 
         yield from helper(rel_item_path, max_distance)
 
@@ -126,12 +127,10 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext) -> QueryContext:
                         # No need to look at other meta files, just return.
                         return
                     else:
-                        logger.debug(f'Field "{field_name}" for item "{rel_item_path}" not found '
-                                     f'in meta file "{rel_meta_path}", skipping')
+                        logger.debug(f'Could not find field "{field_name}" for item "{rel_item_path}" '
+                                     f'in meta file "{rel_meta_path}", trying next meta file, if available')
 
                 else:
-                    logger.info(f'Field "{field_name}" for item "{rel_item_path}" not found in meta file '
-                                f'"{rel_meta_path}", trying next meta file, if available')
-                    return
+                    logger.warning(f'Could not find item "{rel_item_path}" in meta file "{rel_meta_path}"')
 
     return QC()

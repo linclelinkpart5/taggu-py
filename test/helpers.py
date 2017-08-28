@@ -28,8 +28,10 @@ ITEM_FN_SEP = '_'
 
 SELF_META_KEY_STR_TEMPLATE = 'self key {}'
 ITEM_META_KEY_STR_TEMPLATE = 'item key {}'
+CNST_META_KEY = 'cnst'
 SELF_META_VAL_STR_TEMPLATE = 'self metadata for target "{}"'
 ITEM_META_VAL_STR_TEMPLATE = 'item metadata for target "{}"'
+CNST_META_VAL_STR_TEMPLATE = 'cnst metadata for target "{}"'
 
 RANDOM_SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
@@ -156,21 +158,27 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
     helper(curr_dir_mapping=dir_mapping)
 
 
-def gen_item_metadata(rel_item_path: pl.Path) -> typ.Any:
-    return {ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path): ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path)}
+def gen_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+    data = {ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path): ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path)}
+    if include_const_key:
+        data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
+    return data
 
 
-def gen_self_metadata(rel_item_path: pl.Path) -> typ.Any:
-    return {SELF_META_KEY_STR_TEMPLATE.format(rel_item_path): SELF_META_VAL_STR_TEMPLATE.format(rel_item_path)}
+def gen_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+    data = {SELF_META_KEY_STR_TEMPLATE.format(rel_item_path): SELF_META_VAL_STR_TEMPLATE.format(rel_item_path)}
+    if include_const_key:
+        data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
+    return data
 
 
-def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None:
+def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include_const_key: bool=False) -> None:
     def helper(curr_rel_path: pl.Path=pl.Path()):
         curr_abs_path = root_dir / curr_rel_path
         if curr_abs_path.is_dir():
             # Create self meta file.
             with (curr_abs_path / SELF_META_FN).open(mode='w') as stream:
-                data = gen_self_metadata(curr_rel_path)
+                data = gen_self_metadata(curr_rel_path, include_const_key=include_const_key)
                 yaml.dump(data, stream)
 
             # Create item meta file.
@@ -181,7 +189,8 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None
                     helper(curr_rel_path=(curr_rel_path / item_name))
 
                 if item_filter is None or item_filter(abs_entry):
-                    data[item_name] = gen_item_metadata(curr_rel_path / item_name)
+                    data[item_name] = gen_item_metadata(curr_rel_path / item_name,
+                                                        include_const_key=include_const_key)
 
             with (curr_abs_path / ITEM_META_FN).open(mode='w') as stream:
                 yaml.dump(data, stream)
@@ -189,7 +198,7 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None) -> None
     helper()
 
 
-def traverse(root_dir: pl.Path, func: TraverseVisitorFunc,
+def traverse(root_dir: pl.Path, func: TraverseVisitorFunc, offset_sub_path: pl.Path=pl.Path(),
              action_filter: tt.ItemFilter=None, prune_filter: tt.ItemFilter=None) -> None:
     def helper(curr_rel_path: pl.Path=pl.Path()):
         curr_abs_path = root_dir / curr_rel_path
@@ -202,7 +211,7 @@ def traverse(root_dir: pl.Path, func: TraverseVisitorFunc,
                 entry_name = entry.name
                 helper(curr_rel_path / entry_name)
 
-    helper()
+    helper(curr_rel_path=offset_sub_path)
 
 
 def touch_extra_files(root_dir: pl.Path, fns: typ.Iterable[typ.Union[str, pl.Path]]) -> None:
@@ -231,10 +240,6 @@ def yield_invalid_fns() -> typ.Generator[str, None, None]:
     yield os.path.join('a', os.path.curdir)
     yield os.path.join('a', os.path.pardir)
     yield os.path.join('a', 'b')
-
-
-def default_item_filter(abs_item_path: pl.Path) -> bool:
-    return (abs_item_path.is_file() and abs_item_path.suffix == ITEM_FILE_EXT) or abs_item_path.is_dir()
 
 
 def is_meta_file_path(abs_path: pl.Path) -> bool:
