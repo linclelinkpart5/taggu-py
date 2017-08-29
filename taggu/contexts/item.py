@@ -21,3 +21,8 @@ class ItemContext(abc.ABC):
     @abc.abstractmethod
     def yield_field(cls, *, field_name: str, labels: typ.Optional[tq.LabelContainer]) -> tq.FieldValueGen:
         pass
+
+    @classmethod
+    @abc.abstractmethod
+    def yield_parent_fields(cls, *, field_name: str, labels: typ.Optional[tq.LabelContainer]) -> tq.FieldValueGen:
+        pass
