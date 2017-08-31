@@ -90,7 +90,7 @@ class QueryContext(abc.ABC):
                             field_name: str,
                             max_distance: typ.Optional[int]=None,
                             labels: typ.Optional[LabelContainer]) -> FieldValueGen:
-        paths = rel_item_path.parents
+        paths = tuple(rel_item_path.parents)
 
         if max_distance is not None and max_distance >= 0:
             paths = paths[:max_distance]
