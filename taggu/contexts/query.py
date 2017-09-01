@@ -2,11 +2,9 @@ import abc
 import pathlib as pl
 import typing as typ
 import collections.abc
-import itertools as it
 
 import taggu.contexts.library as tlib
 import taggu.contexts.discovery as td
-import taggu.helpers as th
 import taggu.logging as tl
 import taggu.types as tt
 

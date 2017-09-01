@@ -25,10 +25,6 @@ MetaSourceSpecGen = typ.Generator[MetaSourceSpec, None, None]
 
 MetadataResolver = typ.Callable[[pl.Path, str], typ.Generator[str, None, None]]
 
-MetadataCache = typ.MutableMapping[pl.Path, Metadata]
-
-MetaFileCache = typ.MutableMapping[pl.Path, MetadataCache]
-
 PathGen = typ.Generator[pl.Path, None, None]
 
 PathMetadataPair = typ.Tuple[pl.Path, Metadata]

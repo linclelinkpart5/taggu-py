@@ -151,7 +151,6 @@ class TestQuery(unittest.TestCase):
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
 
     def test_yield_child_fields(self):
-        # TODO: Test distance parameter.
         root_dir = self.root_dir_pl
         qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None)
         dis_ctx = qry_ctx.get_discovery_context()
