@@ -32,7 +32,7 @@ class MetaCacher(abc.ABC):
         for rel_meta_path in rel_meta_paths:
             # TODO: See if co-norming is needed here.
             if not force and rel_meta_path in mfc:
-                return
+                continue
 
             # Remove any existing cached entries.
             cls.clear_meta_file(rel_meta_path=rel_meta_path)
@@ -58,6 +58,7 @@ class MetaCacher(abc.ABC):
                 for rel_meta_path in dis_ctx.meta_files_from_item(rel_item_path=rel_item_path):
                     yield rel_meta_path
 
+        # TODO: Add dedupe here.
         cls.cache_meta_files(rel_meta_paths=func(), force=force)
 
     @classmethod

@@ -20,8 +20,9 @@ D_LABEL = 'DISC'
 T_LABEL = 'TRACK'
 S_LABEL = 'SUBTRACK'
 
-SELF_META_FN = 'taggu_self.yml'
-ITEM_META_FN = 'taggu_item.yml'
+META_FILE_EXT = '.yml'
+SELF_META_FN = f'taggu_self{META_FILE_EXT}'
+ITEM_META_FN = f'taggu_item{META_FILE_EXT}'
 
 ITEM_FILE_EXT = '.flac'
 ITEM_FN_SEP = '_'
@@ -212,6 +213,22 @@ def traverse(root_dir: pl.Path, func: TraverseVisitorFunc, offset_sub_path: pl.P
                 helper(curr_rel_path / entry_name)
 
     helper(curr_rel_path=offset_sub_path)
+
+
+def yield_fs_contents_recursively(root_dir: pl.Path, offset_sub_path: pl.Path=pl.Path(),
+                                  pass_filter: tt.ItemFilter=None, prune_filter: tt.ItemFilter=None) -> tt.PathGen:
+    def helper(curr_rel_path: pl.Path=pl.Path()):
+        curr_abs_path = root_dir / curr_rel_path
+
+        if pass_filter is None or pass_filter(curr_abs_path):
+            yield curr_rel_path
+
+        if curr_abs_path.is_dir() and (prune_filter is None or prune_filter(curr_abs_path)):
+            for entry in curr_abs_path.iterdir():
+                entry_name = entry.name
+                yield from helper(curr_rel_path / entry_name)
+
+    yield from helper(curr_rel_path=offset_sub_path)
 
 
 def touch_extra_files(root_dir: pl.Path, fns: typ.Iterable[typ.Union[str, pl.Path]]) -> None:
