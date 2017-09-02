@@ -4,12 +4,16 @@ import tempfile
 import typing as typ
 import unittest
 import itertools as it
+import random
 
 import taggu.contexts.discovery as tcd
 import taggu.contexts.library as tcl
 import taggu.meta_cache as tmc
 import taggu.helpers as th
 import test.helpers as tsth
+
+
+RANDOM_SEED = 27
 
 
 class TestQuery(unittest.TestCase):
@@ -53,7 +57,6 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(expected, produced)
 
     def test_cache_meta_files(self):
-        # Should be 30 meta files.
         root_dir: pl.Path = self.root_dir_pl
         dis_ctx: tcd.DiscoveryContext = self.dis_ctx
         meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
@@ -65,10 +68,7 @@ class TestQuery(unittest.TestCase):
 
         mc = meta_cacher.get_cache()
 
-        self.assertEqual(len(mc), len(rel_meta_paths))
-
-        for rel_meta_path in rel_meta_paths:
-            self.assertIn(rel_meta_path, mc)
+        self.assertEqual(mc.keys(), rel_meta_paths)
 
         # Clear cache.
         meta_cacher.clear_all()
@@ -76,7 +76,6 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(len(mc), 0)
 
     def test_cache_item_files(self):
-        # Should be 45 items.
         root_dir: pl.Path = self.root_dir_pl
         dis_ctx: tcd.DiscoveryContext = self.dis_ctx
         meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
@@ -89,14 +88,73 @@ class TestQuery(unittest.TestCase):
         mc = meta_cacher.get_cache()
 
         cont_rel_item_paths = set()
-
         for metadata in mc.values():
             cont_rel_item_paths.update(metadata.keys())
 
-        self.assertEqual(len(cont_rel_item_paths), len(rel_item_paths))
+        self.assertEqual(cont_rel_item_paths, rel_item_paths)
 
-        for rel_item_path in rel_item_paths:
-            self.assertIn(rel_item_path, cont_rel_item_paths)
+    def test_clear_meta_files(self):
+        root_dir: pl.Path = self.root_dir_pl
+        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
+        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+
+        rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
+                                                                      pass_filter=tsth.is_meta_file_path))
+
+        meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
+
+        # Clear a portion of the meta files, chosen randomly.
+        rel_meta_paths_to_delete = frozenset(random.sample(rel_meta_paths, k=(len(rel_meta_paths) // 2)))
+        rel_meta_paths_to_retain = rel_meta_paths - rel_meta_paths_to_delete
+
+        meta_cacher.clear_meta_files(rel_meta_paths=rel_meta_paths_to_delete)
+
+        mc = meta_cacher.get_cache()
+
+        self.assertEqual(mc.keys(), rel_meta_paths_to_retain)
+        self.assertFalse(rel_meta_paths_to_delete.intersection(mc.keys()))
+
+    def test_clear_item_files(self):
+        root_dir: pl.Path = self.root_dir_pl
+        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
+        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+
+        rel_item_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
+                                                                      pass_filter=tsth.default_item_filter))
+
+        meta_cacher.cache_item_files(rel_item_paths=rel_item_paths)
+
+        # Clear a portion of the item files, chosen randomly.
+        rel_item_paths_to_delete = frozenset(random.sample(rel_item_paths, k=(len(rel_item_paths) // 4)))
+
+        meta_cacher.clear_item_files(rel_item_paths=rel_item_paths_to_delete)
+
+        mc = meta_cacher.get_cache()
+
+        cont_rel_item_paths = set()
+        for metadata in mc.values():
+            cont_rel_item_paths.update(metadata.keys())
+
+        self.assertFalse(rel_item_paths_to_delete.intersection(cont_rel_item_paths))
+
+    def test_clear_all(self):
+        root_dir: pl.Path = self.root_dir_pl
+        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
+        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+
+        rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
+                                                                      pass_filter=tsth.is_meta_file_path))
+
+        meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
+        mc = meta_cacher.get_cache()
+
+        # Assert that cache has been used and is non-empty.
+        self.assertTrue(mc)
+
+        meta_cacher.clear_all()
+        mc = meta_cacher.get_cache()
+
+        self.assertFalse(mc)
 
     def tearDown(self):
         # import ipdb; ipdb.set_trace()

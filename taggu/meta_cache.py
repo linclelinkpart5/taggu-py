@@ -77,6 +77,8 @@ class MetaCacher(abc.ABC):
 
     @classmethod
     def clear_item_files(cls, *, rel_item_paths: typ.Iterable[pl.Path]):
+        # This process is intentionally coarse-grained, deleting an item file from cache
+        # also deletes all sibling files from cache, as necessary.
         dis_ctx: tcd.DiscoveryContext = cls.get_discovery_context()
 
         def func():
