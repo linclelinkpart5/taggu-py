@@ -31,16 +31,25 @@ class TestQuery(unittest.TestCase):
                                  item_file_suffix=tsth.ITEM_FILE_EXT)
         tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=tsth.default_item_filter)
 
+        self.rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=self.root_dir_pl,
+                                                                           pass_filter=tsth.is_meta_file_path))
+
+        self.rel_item_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=self.root_dir_pl,
+                                                                           pass_filter=tsth.default_item_filter))
+
+    def new_meta_cacher(self) -> tmc.MetaCacher:
+        return tmc.gen_meta_cacher(discovery_context=self.dis_ctx)
+
     def test_generate(self):
         dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
 
         # Expected type of meta cacher.
         self.assertIsInstance(meta_cacher, tmc.MetaCacher)
 
     def test_get_discovery_context(self):
         dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
 
         # Discovery context is same instance as what was passed in.
         expected = dis_ctx
@@ -48,8 +57,7 @@ class TestQuery(unittest.TestCase):
         self.assertIs(expected, produced)
 
     def test_get_cache(self):
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
         # Cache starts out empty.
         expected = {}
@@ -57,12 +65,9 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(expected, produced)
 
     def test_cache_meta_files(self):
-        root_dir: pl.Path = self.root_dir_pl
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
-        rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
-                                                                      pass_filter=tsth.is_meta_file_path))
+        rel_meta_paths = self.rel_meta_paths
 
         meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
 
@@ -76,12 +81,9 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(len(mc), 0)
 
     def test_cache_item_files(self):
-        root_dir: pl.Path = self.root_dir_pl
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
-        rel_item_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
-                                                                      pass_filter=tsth.default_item_filter))
+        rel_item_paths = self.rel_item_paths
 
         meta_cacher.cache_item_files(rel_item_paths=rel_item_paths)
 
@@ -94,12 +96,9 @@ class TestQuery(unittest.TestCase):
         self.assertEqual(cont_rel_item_paths, rel_item_paths)
 
     def test_clear_meta_files(self):
-        root_dir: pl.Path = self.root_dir_pl
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
-        rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
-                                                                      pass_filter=tsth.is_meta_file_path))
+        rel_meta_paths = self.rel_meta_paths
 
         meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
 
@@ -115,12 +114,9 @@ class TestQuery(unittest.TestCase):
         self.assertFalse(rel_meta_paths_to_delete.intersection(mc.keys()))
 
     def test_clear_item_files(self):
-        root_dir: pl.Path = self.root_dir_pl
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
-        rel_item_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
-                                                                      pass_filter=tsth.default_item_filter))
+        rel_item_paths = self.rel_item_paths
 
         meta_cacher.cache_item_files(rel_item_paths=rel_item_paths)
 
@@ -138,12 +134,9 @@ class TestQuery(unittest.TestCase):
         self.assertFalse(rel_item_paths_to_delete.intersection(cont_rel_item_paths))
 
     def test_clear_all(self):
-        root_dir: pl.Path = self.root_dir_pl
-        dis_ctx: tcd.DiscoveryContext = self.dis_ctx
-        meta_cacher: tmc.MetaCacher = tmc.gen_meta_cacher(discovery_context=dis_ctx)
+        meta_cacher = self.new_meta_cacher()
 
-        rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=root_dir,
-                                                                      pass_filter=tsth.is_meta_file_path))
+        rel_meta_paths = self.rel_meta_paths
 
         meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
         mc = meta_cacher.get_cache()
@@ -156,10 +149,65 @@ class TestQuery(unittest.TestCase):
 
         self.assertFalse(mc)
 
-    def tearDown(self):
-        # import ipdb; ipdb.set_trace()
-        # input('Press ENTER to continue and cleanup')
+    def test_get_meta_file(self):
+        meta_cacher = self.new_meta_cacher()
 
+        rel_meta_paths = self.rel_meta_paths
+
+        meta_cacher.cache_meta_files(rel_meta_paths=rel_meta_paths)
+        mc = meta_cacher.get_cache()
+
+        for rel_meta_path in rel_meta_paths:
+            expected = mc[rel_meta_path]
+            produced = meta_cacher.get_meta_file(rel_meta_path=rel_meta_path)
+            self.assertEqual(expected, produced)
+
+        with self.assertRaises(KeyError):
+            meta_cacher.get_meta_file(rel_meta_path=pl.Path('DOES_NOT_EXIST'))
+
+    def test_get_item_file(self):
+        root_dir: pl.Path = self.root_dir_pl
+        meta_cacher = self.new_meta_cacher()
+
+        rel_item_paths = self.rel_item_paths
+
+        meta_cacher.cache_item_files(rel_item_paths=rel_item_paths)
+
+        for rel_item_path in rel_item_paths:
+            abs_item_path = root_dir / rel_item_path
+            if abs_item_path.is_dir():
+                expected = tsth.gen_self_metadata(rel_item_path=rel_item_path)
+            else:
+                expected = tsth.gen_item_metadata(rel_item_path=rel_item_path)
+            produced = meta_cacher.get_item_file(rel_item_path=rel_item_path)
+            self.assertEqual(expected, produced)
+
+        with self.assertRaises(KeyError):
+            meta_cacher.get_item_file(rel_item_path=pl.Path('DOES_NOT_EXIST'))
+
+    def test_contains_meta_file(self):
+        meta_cacher = self.new_meta_cacher()
+
+        rel_meta_paths = self.rel_meta_paths
+
+        for rel_meta_path in rel_meta_paths:
+            meta_cacher.cache_meta_file(rel_meta_path=rel_meta_path)
+            self.assertTrue(meta_cacher.contains_meta_file(rel_meta_path=rel_meta_path))
+            meta_cacher.clear_meta_file(rel_meta_path=rel_meta_path)
+            self.assertFalse(meta_cacher.contains_meta_file(rel_meta_path=rel_meta_path))
+
+    def test_contains_item_file(self):
+        meta_cacher = self.new_meta_cacher()
+
+        rel_item_paths = self.rel_item_paths
+
+        for rel_item_path in rel_item_paths:
+            meta_cacher.cache_item_file(rel_item_path=rel_item_path)
+            self.assertTrue(meta_cacher.contains_item_file(rel_item_path=rel_item_path))
+            meta_cacher.clear_item_file(rel_item_path=rel_item_path)
+            self.assertFalse(meta_cacher.contains_item_file(rel_item_path=rel_item_path))
+
+    def tearDown(self):
         self.root_dir_obj.cleanup()
 
 if __name__ == '__main__':
