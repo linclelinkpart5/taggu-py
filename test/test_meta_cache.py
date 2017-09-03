@@ -15,6 +15,8 @@ import test.helpers as tsth
 
 RANDOM_SEED = 27
 
+random.seed(RANDOM_SEED)
+
 
 class TestQuery(unittest.TestCase):
     def setUp(self):

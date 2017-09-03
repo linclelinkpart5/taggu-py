@@ -7,6 +7,7 @@ import taggu.contexts.library as tlib
 import taggu.contexts.discovery as td
 import taggu.logging as tl
 import taggu.types as tt
+import taggu.meta_cache as tmc
 
 logger = tl.get_logger(__name__)
 
@@ -33,6 +34,11 @@ class QueryContext(abc.ABC):
         pass
 
     @classmethod
+    @abc.abstractmethod
+    def get_meta_cacher(cls) -> typ.Optional[tmc.MetaCacher]:
+        pass
+
+    @classmethod
     def yield_field(cls, *,
                     rel_item_path: pl.Path,
                     field_name: str,
@@ -52,10 +58,16 @@ class QueryContext(abc.ABC):
                                 f'did not match any expected labels, skipping')
                     return
 
+        meta_cacher: tmc.MetaCacher = cls.get_meta_cacher()
+
         for rel_meta_path in discovery_context.meta_files_from_item(rel_item_path):
-            temp_cache: typ.MutableMapping[pl.Path, tt.Metadata] = {
-                k: v for k, v in discovery_context.items_from_meta_file(rel_meta_path=rel_meta_path)
-            }
+            if meta_cacher is not None:
+                meta_cacher.cache_meta_file(rel_meta_path=rel_meta_path)
+                temp_cache = meta_cacher.get_meta_file(rel_meta_path=rel_meta_path)
+            else:
+                temp_cache: typ.MutableMapping[pl.Path, tt.Metadata] = {
+                    k: v for k, v in discovery_context.items_from_meta_file(rel_meta_path=rel_meta_path)
+                }
 
             if rel_item_path in temp_cache:
                 meta_dict = temp_cache[rel_item_path]
@@ -136,7 +148,12 @@ class QueryContext(abc.ABC):
 
 
 def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
-                   label_extractor: typ.Optional[LabelExtractor]) -> QueryContext:
+                   label_extractor: typ.Optional[LabelExtractor],
+                   use_cache: bool=False) -> QueryContext:
+    meta_cacher = None
+    if use_cache:
+        meta_cacher = tmc.gen_meta_cacher(discovery_context=discovery_context)
+
     class QC(QueryContext):
         @classmethod
         def get_discovery_context(cls) -> td.DiscoveryContext:
@@ -145,5 +162,9 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
         @classmethod
         def get_label_extractor(cls) -> typ.Optional[LabelExtractor]:
             return label_extractor
+
+        @classmethod
+        def get_meta_cacher(cls) -> typ.Optional[tmc.MetaCacher]:
+            return meta_cacher
 
     return QC()

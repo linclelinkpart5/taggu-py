@@ -43,7 +43,7 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_field(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=label_ext)
+        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=label_ext, use_cache=True)
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             matching_labels = frozenset((label_ext(curr_abs_path),))
@@ -93,7 +93,7 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_parent_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None)
+        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
 
         def func(curr_rel_path: pl.Path, _: pl.Path):
             for rel_parent in curr_rel_path.parents:
@@ -152,7 +152,7 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_child_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None)
+        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
         dis_ctx = qry_ctx.get_discovery_context()
         lib_ctx = dis_ctx.get_library_context()
 
