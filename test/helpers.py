@@ -5,11 +5,11 @@ import string
 import contextlib
 import logging
 import os.path
+import re
 
 import yaml
 
 import taggu.types as tt
-import taggu.helpers as th
 
 DirectoryHierarchyMapping = typ.Mapping[str, typ.Optional['DirectoryHierarchyMapping']]
 TraverseVisitorFunc = typ.Callable[[pl.Path, pl.Path], None]
@@ -33,6 +33,9 @@ CNST_META_KEY = 'cnst'
 SELF_META_VAL_STR_TEMPLATE = 'self metadata for target "{}"'
 ITEM_META_VAL_STR_TEMPLATE = 'item metadata for target "{}"'
 CNST_META_VAL_STR_TEMPLATE = 'cnst metadata for target "{}"'
+
+UNUSED_LABEL = 'UNUSED_LABEL'
+LABEL_REGEX = re.compile(r'^([A-Z]+).*')
 
 RANDOM_SALT_STR = ''.join(random.choices(string.ascii_uppercase + string.digits, k=5))
 
@@ -261,3 +264,10 @@ def yield_invalid_fns() -> typ.Generator[str, None, None]:
 
 def is_meta_file_path(abs_path: pl.Path) -> bool:
     return abs_path.name in {SELF_META_FN, ITEM_META_FN}
+
+
+def default_label_extractor(abs_item_path: pl.Path) -> typ.Optional[str]:
+    fn = abs_item_path.name
+    m = LABEL_REGEX.match(fn)
+    if m:
+        return m.group(1)

@@ -1,9 +1,7 @@
 import logging
 import pathlib as pl
 import tempfile
-import typing as typ
 import unittest
-import itertools as it
 import random
 
 import taggu.contexts.discovery as tcd
@@ -48,6 +46,10 @@ class TestQuery(unittest.TestCase):
 
         # Expected type of meta cacher.
         self.assertIsInstance(meta_cacher, tmc.MetaCacher)
+
+        # Cache should start out empty.
+        mc = meta_cacher.get_cache()
+        self.assertFalse(mc)
 
     def test_get_discovery_context(self):
         dis_ctx: tcd.DiscoveryContext = self.dis_ctx

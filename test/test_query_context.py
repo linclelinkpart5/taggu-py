@@ -1,28 +1,13 @@
 import logging
 import pathlib as pl
 import tempfile
-import typing as typ
 import unittest
-import re
-
-import yaml
 
 import taggu.contexts.discovery as td
 import taggu.contexts.library as tl
 import taggu.contexts.query as tq
 import taggu.helpers as th
 import test.helpers as tsth
-
-
-UNUSED_LABEL = 'UNUSED_LABEL'
-LABEL_REGEX = re.compile(r'^([A-Z]+).*')
-
-
-def label_ext(abs_item_path: pl.Path) -> typ.Optional[str]:
-    fn = abs_item_path.name
-    m = LABEL_REGEX.match(fn)
-    if m:
-        return m.group(1)
 
 
 class TestQuery(unittest.TestCase):
@@ -43,11 +28,13 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_field(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=label_ext, use_cache=True)
+        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx,
+                                    label_extractor=tsth.default_label_extractor,
+                                    use_cache=True)
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
-            matching_labels = frozenset((label_ext(curr_abs_path),))
-            distinct_labels = frozenset((UNUSED_LABEL,))
+            matching_labels = frozenset((tsth.default_label_extractor(curr_abs_path),))
+            distinct_labels = frozenset((tsth.UNUSED_LABEL,))
 
             # Validate item metadata.
             expected = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(curr_rel_path),) if curr_rel_path.parts else ()

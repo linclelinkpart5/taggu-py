@@ -6,8 +6,8 @@ import unittest
 
 import yaml
 
-import taggu.contexts.discovery as td
-import taggu.contexts.library as tl
+import taggu.contexts.discovery as tcd
+import taggu.contexts.library as tcl
 import taggu.helpers as th
 
 A_LABEL = 'ALBUM'
@@ -34,11 +34,11 @@ class TestDiscovery(unittest.TestCase):
 
         self.root_dir_pl = pl.Path(self.root_dir_obj.name)
 
-        self.library_context = tl.gen_library_ctx(root_dir=self.root_dir_pl,
-                                                  media_item_filter=item_filter,
-                                                  media_item_sort_key=None,
-                                                  self_meta_file_name=META_SELF,
-                                                  item_meta_file_name=META_ITEM)
+        self.library_context = tcl.gen_library_ctx(root_dir=self.root_dir_pl,
+                                                   media_item_filter=item_filter,
+                                                   media_item_sort_key=None,
+                                                   self_meta_file_name=META_SELF,
+                                                   item_meta_file_name=META_ITEM)
 
         dir_hierarchy: DirectoryHierarchy = {
             # Well-behaved album.
@@ -171,7 +171,7 @@ class TestDiscovery(unittest.TestCase):
 
     def test_meta_files_from_item(self):
         lib_ctx = self.library_context
-        dis_ctx = td.gen_discovery_ctx(library_context=lib_ctx)
+        dis_ctx = tcd.gen_discovery_ctx(library_context=lib_ctx)
 
         def helper(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             def yielder():
@@ -190,7 +190,7 @@ class TestDiscovery(unittest.TestCase):
 
     def test_items_from_meta_file(self):
         lib_ctx = self.library_context
-        dis_ctx = td.gen_discovery_ctx(library_context=lib_ctx)
+        dis_ctx = tcd.gen_discovery_ctx(library_context=lib_ctx)
         root_dir = lib_ctx.get_root_dir()
 
         # Collect all relative meta paths.
@@ -234,7 +234,7 @@ class TestDiscovery(unittest.TestCase):
         self.root_dir_obj.cleanup()
 
 if __name__ == '__main__':
-    logging.getLogger(td.__name__).setLevel(level=logging.WARNING)
-    logging.getLogger(tl.__name__).setLevel(level=logging.WARNING)
+    logging.getLogger(tcd.__name__).setLevel(level=logging.WARNING)
+    logging.getLogger(tcl.__name__).setLevel(level=logging.WARNING)
     logging.getLogger(th.__name__).setLevel(level=logging.WARNING)
     unittest.main()

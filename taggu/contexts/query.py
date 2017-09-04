@@ -84,6 +84,8 @@ class QueryContext(abc.ABC):
                         yield field_val
                     elif isinstance(field_val, collections.abc.Sequence):
                         yield from field_val
+                    elif isinstance(field_val, collections.abc.Mapping):
+                        yield from field_val.keys()
 
                     # No need to look at other meta files, just return.
                     return
@@ -149,7 +151,7 @@ class QueryContext(abc.ABC):
 
 def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
                    label_extractor: typ.Optional[LabelExtractor],
-                   use_cache: bool=False) -> QueryContext:
+                   use_cache: bool=True) -> QueryContext:
     meta_cacher = None
     if use_cache:
         meta_cacher = tmc.gen_meta_cacher(discovery_context=discovery_context)
