@@ -2,6 +2,7 @@ import abc
 import pathlib as pl
 import typing as typ
 import collections.abc
+import enum
 
 import taggu.contexts.library as tlib
 import taggu.contexts.discovery as td
@@ -16,6 +17,39 @@ LabelContainer = typ.Container[Label]
 LabelExtractor = typ.Callable[[pl.Path], str]
 
 FieldValueGen = typ.Generator[tt.FieldValue, None, None]
+
+MappingIterFunc = typ.Callable[[typ.Mapping], typ.Generator[typ.Any, None, None]]
+
+
+def mis_keys(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
+    yield from d.keys()
+
+
+def mis_vals(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
+    yield from d.values()
+
+
+def mis_pairs(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
+    yield from d.items()
+
+
+def mis_keys_and_vals(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
+    for k, v in d.items():
+        yield k
+        yield v
+
+
+def mis_skip(_) -> typ.Generator[typ.Any, None, None]:
+    if False:
+        yield
+
+
+class MappingIterStyle(enum.Enum):
+    KEYS = mis_keys
+    VALS = mis_vals
+    PAIRS = mis_pairs
+    KEYS_AND_VALS = mis_keys_and_vals
+    SKIP = mis_skip
 
 
 class QueryContext(abc.ABC):
@@ -36,6 +70,11 @@ class QueryContext(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def get_meta_cacher(cls) -> typ.Optional[tmc.MetaCacher]:
+        pass
+
+    @classmethod
+    @abc.abstractmethod
+    def get_mapping_iter_style(cls) -> MappingIterStyle:
         pass
 
     @classmethod
@@ -85,7 +124,13 @@ class QueryContext(abc.ABC):
                     elif isinstance(field_val, collections.abc.Sequence):
                         yield from field_val
                     elif isinstance(field_val, collections.abc.Mapping):
-                        yield from field_val.keys()
+                        mis = cls.get_mapping_iter_style().value
+                        yield from mis(field_val)
+                    else:
+                        logger.warning(f'Field "{field_name}" in meta file "{rel_meta_path}" had unexpected type, '
+                                       f'skipping')
+                        # TODO: Correct to continue, or better to break?
+                        continue
 
                     # No need to look at other meta files, just return.
                     return
@@ -148,10 +193,23 @@ class QueryContext(abc.ABC):
 
         yield from helper(rel_item_path, max_distance)
 
+    # @classmethod
+    # def get_field(cls, *,
+    #               rel_item_path: pl.Path,
+    #               field_name: str,
+    #               labels: typ.Optional[LabelContainer]):
+    #     # 1) <field absent>: None
+    #     # 2) None: None
+    #     # 3) <any str value, including empty>: that str value
+    #     # 4) <any seq value, including empty>: that seq value, as a tuple
+    #     # 5) <any map value, including empty>: that map value, as a dict
+    #     pass
 
-def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
-                   label_extractor: typ.Optional[LabelExtractor],
-                   use_cache: bool=True) -> QueryContext:
+
+def gen_query_ctx(*, discovery_context: td.DiscoveryContext,
+                  label_extractor: typ.Optional[LabelExtractor],
+                  mapping_iter_style: MappingIterStyle,
+                  use_cache: bool=True) -> QueryContext:
     meta_cacher = None
     if use_cache:
         meta_cacher = tmc.gen_meta_cacher(discovery_context=discovery_context)
@@ -168,5 +226,9 @@ def gen_lookup_ctx(*, discovery_context: td.DiscoveryContext,
         @classmethod
         def get_meta_cacher(cls) -> typ.Optional[tmc.MetaCacher]:
             return meta_cacher
+
+        @classmethod
+        def get_mapping_iter_style(cls) -> MappingIterStyle:
+            return mapping_iter_style
 
     return QC()

@@ -14,6 +14,9 @@ import taggu.types as tt
 DirectoryHierarchyMapping = typ.Mapping[str, typ.Optional['DirectoryHierarchyMapping']]
 TraverseVisitorFunc = typ.Callable[[pl.Path, pl.Path], None]
 
+MetaKeyGen = typ.Callable[[pl.Path], str]
+MetaValGen = typ.Callable[[pl.Path], typ.Union[str, typ.Sequence[str], typ.Mapping[str, str]]]
+
 
 A_LABEL = 'ALBUM'
 D_LABEL = 'DISC'
@@ -27,12 +30,7 @@ ITEM_META_FN = f'taggu_item{META_FILE_EXT}'
 ITEM_FILE_EXT = '.flac'
 ITEM_FN_SEP = '_'
 
-SELF_META_KEY_STR_TEMPLATE = 'self key {}'
-ITEM_META_KEY_STR_TEMPLATE = 'item key {}'
 CNST_META_KEY = 'cnst'
-SELF_META_VAL_STR_TEMPLATE = 'self metadata for target "{}"'
-ITEM_META_VAL_STR_TEMPLATE = 'item metadata for target "{}"'
-CNST_META_VAL_STR_TEMPLATE = 'cnst metadata for target "{}"'
 
 UNUSED_LABEL = 'UNUSED_LABEL'
 LABEL_REGEX = re.compile(r'^([A-Z]+).*')
@@ -44,6 +42,26 @@ class LogEntry(typ.NamedTuple):
     logger: str
     level: int
     message: str
+
+
+def gen_self_meta_key(rel_item_path: pl.Path) -> str:
+    return f'self key "{rel_item_path}"'
+
+
+def gen_item_meta_key(rel_item_path: pl.Path) -> str:
+    return f'item key "{rel_item_path}"'
+
+
+def gen_self_meta_scl_val(rel_item_path: pl.Path) -> str:
+    return f'self metadata for target "{rel_item_path}"'
+
+
+def gen_item_meta_scl_val(rel_item_path: pl.Path) -> str:
+    return f'item metadata for target "{rel_item_path}"'
+
+
+def gen_cnst_meta_scl_val(rel_item_path: pl.Path) -> str:
+    return f'cnst metadata for target "{rel_item_path}"'
 
 
 @contextlib.contextmanager
@@ -162,22 +180,39 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
     helper(curr_dir_mapping=dir_mapping)
 
 
-def gen_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False, include_null_val: bool=True) -> typ.Any:
-    data = {ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path): ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path)}
+def gen_simple_metadata_block(*, rel_item_path: pl.Path,
+                              meta_key_gen: MetaKeyGen,
+                              meta_val_gen: MetaValGen,
+                              include_const_key: bool=False) -> typ.Mapping:
+    data = {meta_key_gen(rel_item_path): meta_val_gen(rel_item_path)}
     if include_const_key:
-        data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
-    if include_null_val:
-        data[None] = None
+        data[CNST_META_KEY] = gen_cnst_meta_scl_val(rel_item_path)
     return data
 
 
-def gen_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False, include_null_val: bool=True) -> typ.Any:
-    data = {SELF_META_KEY_STR_TEMPLATE.format(rel_item_path): SELF_META_VAL_STR_TEMPLATE.format(rel_item_path)}
-    if include_const_key:
-        data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
-    if include_null_val:
-        data[None] = None
+def gen_complex_metadata_block(*, rel_item_path: pl.Path) -> typ.Mapping:
+    data = {
+        'key a': 'val a',
+        'key b': ['val b', 'val c'],
+        'key c': {
+            'key d': 'val d',
+            'key e': ['val e', 'val f'],
+        },
+        'key f': None,
+        None: 'val g',
+    }
+
     return data
+
+
+def gen_simple_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+    return gen_simple_metadata_block(rel_item_path=rel_item_path, meta_key_gen=gen_item_meta_key,
+                                     meta_val_gen=gen_item_meta_scl_val, include_const_key=include_const_key)
+
+
+def gen_simple_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+    return gen_simple_metadata_block(rel_item_path=rel_item_path, meta_key_gen=gen_self_meta_key,
+                                     meta_val_gen=gen_self_meta_scl_val, include_const_key=include_const_key)
 
 
 def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include_const_key: bool=False) -> None:
@@ -186,7 +221,7 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include
         if curr_abs_path.is_dir():
             # Create self meta file.
             with (curr_abs_path / SELF_META_FN).open(mode='w') as stream:
-                data = gen_self_metadata(curr_rel_path, include_const_key=include_const_key)
+                data = gen_simple_self_metadata(curr_rel_path, include_const_key=include_const_key)
                 yaml.dump(data, stream)
 
             # Create item meta file.
@@ -197,8 +232,8 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include
                     helper(curr_rel_path=(curr_rel_path / item_name))
 
                 if item_filter is None or item_filter(abs_entry):
-                    data[item_name] = gen_item_metadata(curr_rel_path / item_name,
-                                                        include_const_key=include_const_key)
+                    data[item_name] = gen_simple_item_metadata(curr_rel_path / item_name,
+                                                               include_const_key=include_const_key)
 
             with (curr_abs_path / ITEM_META_FN).open(mode='w') as stream:
                 yaml.dump(data, stream)

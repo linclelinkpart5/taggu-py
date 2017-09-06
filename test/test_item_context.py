@@ -19,9 +19,10 @@ class TestQuery(unittest.TestCase):
         self.lib_ctx = tcl.gen_library_ctx(root_dir=self.root_dir_pl, media_item_filter=tsth.default_item_filter,
                                            self_meta_file_name=tsth.SELF_META_FN, item_meta_file_name=tsth.ITEM_META_FN)
         self.dis_ctx = tcd.gen_discovery_ctx(library_context=self.lib_ctx)
-        self.qry_ctx = tcq.gen_lookup_ctx(discovery_context=self.dis_ctx,
-                                          label_extractor=tsth.default_label_extractor,
-                                          use_cache=True)
+        self.qry_ctx = tcq.gen_query_ctx(discovery_context=self.dis_ctx,
+                                         label_extractor=tsth.default_label_extractor,
+                                         use_cache=True,
+                                         mapping_iter_style=tcq.MappingIterStyle.KEYS)
 
         dir_hier_map = tsth.gen_default_dir_hier_map()
         tsth.write_dir_hierarchy(root_dir=self.root_dir_pl,
@@ -57,8 +58,8 @@ class TestQuery(unittest.TestCase):
             itm_ctx = tci.gen_item_ctx(query_context=qry_ctx, rel_item_path=rel_item_path)
 
             # Validate item metadata.
-            expected = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path),) if rel_item_path.parts else ()
-            produced = tuple(itm_ctx.yield_field(field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path),
+            expected = (tsth.gen_item_meta_scl_val(rel_item_path),) if rel_item_path.parts else ()
+            produced = tuple(itm_ctx.yield_field(field_name=tsth.gen_item_meta_key(rel_item_path),
                                                  labels=None))
             self.assertEqual(expected, produced)
 

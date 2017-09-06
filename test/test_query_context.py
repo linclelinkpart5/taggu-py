@@ -28,78 +28,81 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_field(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx,
-                                    label_extractor=tsth.default_label_extractor,
-                                    use_cache=True)
+        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx,
+                                   label_extractor=tsth.default_label_extractor,
+                                   use_cache=True,
+                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             matching_labels = frozenset((tsth.default_label_extractor(curr_abs_path),))
             distinct_labels = frozenset((tsth.UNUSED_LABEL,))
 
             # Validate item metadata.
-            expected = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(curr_rel_path),) if curr_rel_path.parts else ()
+            expected = (tsth.gen_item_meta_scl_val(curr_rel_path),) if curr_rel_path.parts else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_item_meta_key(curr_rel_path),
                                                  labels=None))
             self.assertEqual(expected, produced)
 
             # Validate item metadata with matched labels.
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_item_meta_key(curr_rel_path),
                                                  labels=matching_labels))
             self.assertEqual(expected, produced)
 
             # Validate item metadata with non-matched labels.
             expected = ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_item_meta_key(curr_rel_path),
                                                  labels=distinct_labels))
             self.assertEqual(expected, produced)
 
             # Validate self metadata.
-            expected = (tsth.SELF_META_VAL_STR_TEMPLATE.format(curr_rel_path),) if curr_abs_path.is_dir() else ()
+            expected = (tsth.gen_self_meta_scl_val(curr_rel_path),) if curr_abs_path.is_dir() else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_self_meta_key(curr_rel_path),
                                                  labels=None))
             self.assertEqual(expected, produced)
 
             # Validate self metadata with matched labels.
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_self_meta_key(curr_rel_path),
                                                  labels=matching_labels))
             self.assertEqual(expected, produced)
 
             # Validate self metadata with non-matched labels.
             expected = ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(curr_rel_path),
+                                                 field_name=tsth.gen_self_meta_key(curr_rel_path),
                                                  labels=distinct_labels))
             self.assertEqual(expected, produced)
 
-            # Validate null metadata.
-            expected = (None,)
-            produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
-                                                 field_name=None,
-                                                 labels=None))
-            self.assertEqual(expected, produced)
+            # TODO: See if this test is better suited for the YAML loader test.
+            # # Validate null metadata.
+            # expected = (None,)
+            # produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
+            #                                      field_name=None,
+            #                                      labels=None))
+            # self.assertEqual(expected, produced)
 
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
 
     def test_yield_parent_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
+        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True,
+                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
 
         def func(curr_rel_path: pl.Path, _: pl.Path):
             for rel_parent in curr_rel_path.parents:
                 # Generate expected field names.
-                item_field_name = tsth.ITEM_META_KEY_STR_TEMPLATE.format(rel_parent)
-                self_field_name = tsth.SELF_META_KEY_STR_TEMPLATE.format(rel_parent)
+                item_field_name = tsth.gen_item_meta_key(rel_parent)
+                self_field_name = tsth.gen_self_meta_key(rel_parent)
 
                 # Calculate distance from relative parent path to relative target path.
                 rel_parent_distance = len(curr_rel_path.parts) - len(rel_parent.parts)
 
                 # Validate item metadata.
-                expected = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(rel_parent),) if rel_parent.parts else ()
+                expected = (tsth.gen_item_meta_scl_val(rel_parent),) if rel_parent.parts else ()
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=item_field_name,
                                                              labels=None))
@@ -121,7 +124,7 @@ class TestQuery(unittest.TestCase):
                 self.assertEqual(expected, produced)
 
                 # Validate self metadata.
-                expected = (tsth.SELF_META_VAL_STR_TEMPLATE.format(rel_parent),)
+                expected = (tsth.gen_self_meta_scl_val(rel_parent),)
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=self_field_name,
                                                              labels=None))
@@ -146,13 +149,14 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_child_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_lookup_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
+        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True,
+                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
         dis_ctx = qry_ctx.get_discovery_context()
         lib_ctx = dis_ctx.get_library_context()
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             if curr_abs_path.is_dir():
-                expected = tuple(tsth.CNST_META_VAL_STR_TEMPLATE.format(curr_rel_path / p)
+                expected = tuple(tsth.gen_cnst_meta_scl_val(curr_rel_path / p)
                                  for p in lib_ctx.sorted_item_names_in_dir(curr_rel_path))
                 produced = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                             field_name=tsth.CNST_META_KEY,
@@ -170,15 +174,15 @@ class TestQuery(unittest.TestCase):
                     self.assertGreater(rel_distance, 0)
 
                     # Validate item metadata.
-                    exp = (tsth.ITEM_META_VAL_STR_TEMPLATE.format(crp),) if crp.parents else ()
+                    exp = (tsth.gen_item_meta_scl_val(crp),) if crp.parents else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with exact max distance.
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None,
                                                            max_distance=rel_distance))
                     self.assertEqual(exp, prd)
@@ -186,21 +190,21 @@ class TestQuery(unittest.TestCase):
                     # Validate item metadata with insufficient max distance.
                     exp = ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.ITEM_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None,
                                                            max_distance=(rel_distance - 1)))
                     self.assertEqual(exp, prd)
 
                     # Validate self metadata.
-                    exp = (tsth.SELF_META_VAL_STR_TEMPLATE.format(crp),) if cap.is_dir() else ()
+                    exp = (tsth.gen_self_meta_scl_val(crp),) if cap.is_dir() else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with exact max distance.
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None,
                                                            max_distance=rel_distance))
                     self.assertEqual(exp, prd)
@@ -208,7 +212,7 @@ class TestQuery(unittest.TestCase):
                     # Validate item metadata with insufficient max distance.
                     exp = ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
-                                                           field_name=tsth.SELF_META_KEY_STR_TEMPLATE.format(crp),
+                                                           field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None,
                                                            max_distance=(rel_distance - 1)))
                     self.assertEqual(exp, prd)

@@ -180,9 +180,9 @@ class TestQuery(unittest.TestCase):
         for rel_item_path in rel_item_paths:
             abs_item_path = root_dir / rel_item_path
             if abs_item_path.is_dir():
-                expected = tsth.gen_self_metadata(rel_item_path=rel_item_path)
+                expected = tsth.gen_simple_self_metadata(rel_item_path=rel_item_path)
             else:
-                expected = tsth.gen_item_metadata(rel_item_path=rel_item_path)
+                expected = tsth.gen_simple_item_metadata(rel_item_path=rel_item_path)
             produced = meta_cacher.get_item_file(rel_item_path=rel_item_path)
             self.assertEqual(expected, produced)
 
