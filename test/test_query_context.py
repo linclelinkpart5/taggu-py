@@ -76,6 +76,13 @@ class TestQuery(unittest.TestCase):
                                                  labels=distinct_labels))
             self.assertEqual(expected, produced)
 
+            # Validate null metadata.
+            expected = (None,)
+            produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
+                                                 field_name=None,
+                                                 labels=None))
+            self.assertEqual(expected, produced)
+
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
 
     def test_yield_parent_fields(self):

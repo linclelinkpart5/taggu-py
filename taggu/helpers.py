@@ -7,6 +7,7 @@ import yaml
 
 import taggu.logging as tl
 import taggu.exceptions as tex
+import taggu.yaml.loader as tyl
 
 logger = tl.get_logger(__name__)
 
@@ -58,7 +59,7 @@ def read_yaml_file(abs_yaml_file_path: pl.Path) -> typ.Any:
     logger.debug(f'Opening YAML file "{abs_yaml_file_path}"')
     with abs_yaml_file_path.open() as f:
         # TODO: Need to handle nulls as nulls, not as strings.
-        data = yaml.load(f, Loader=yaml.BaseLoader)
+        data = yaml.load(f, Loader=tyl.TagguLoader)
 
     return data
 

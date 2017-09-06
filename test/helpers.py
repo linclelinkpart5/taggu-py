@@ -162,17 +162,21 @@ def write_dir_hierarchy(root_dir: pl.Path, dir_mapping: DirectoryHierarchyMappin
     helper(curr_dir_mapping=dir_mapping)
 
 
-def gen_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+def gen_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False, include_null_val: bool=True) -> typ.Any:
     data = {ITEM_META_KEY_STR_TEMPLATE.format(rel_item_path): ITEM_META_VAL_STR_TEMPLATE.format(rel_item_path)}
     if include_const_key:
         data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
+    if include_null_val:
+        data[None] = None
     return data
 
 
-def gen_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+def gen_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False, include_null_val: bool=True) -> typ.Any:
     data = {SELF_META_KEY_STR_TEMPLATE.format(rel_item_path): SELF_META_VAL_STR_TEMPLATE.format(rel_item_path)}
     if include_const_key:
         data[CNST_META_KEY] = CNST_META_VAL_STR_TEMPLATE.format(rel_item_path)
+    if include_null_val:
+        data[None] = None
     return data
 
 
