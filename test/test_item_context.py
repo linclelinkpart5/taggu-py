@@ -58,7 +58,7 @@ class TestQuery(unittest.TestCase):
             itm_ctx = tci.gen_item_ctx(query_context=qry_ctx, rel_item_path=rel_item_path)
 
             # Validate item metadata.
-            expected = (tsth.gen_item_meta_scl_val(rel_item_path),) if rel_item_path.parts else ()
+            expected = (tsth.gen_item_meta_str_val(rel_item_path),) if rel_item_path.parts else ()
             produced = tuple(itm_ctx.yield_field(field_name=tsth.gen_item_meta_key(rel_item_path),
                                                  labels=None))
             self.assertEqual(expected, produced)

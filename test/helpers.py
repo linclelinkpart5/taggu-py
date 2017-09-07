@@ -52,15 +52,15 @@ def gen_item_meta_key(rel_item_path: pl.Path) -> str:
     return f'item key "{rel_item_path}"'
 
 
-def gen_self_meta_scl_val(rel_item_path: pl.Path) -> str:
+def gen_self_meta_str_val(rel_item_path: pl.Path) -> str:
     return f'self metadata for target "{rel_item_path}"'
 
 
-def gen_item_meta_scl_val(rel_item_path: pl.Path) -> str:
+def gen_item_meta_str_val(rel_item_path: pl.Path) -> str:
     return f'item metadata for target "{rel_item_path}"'
 
 
-def gen_cnst_meta_scl_val(rel_item_path: pl.Path) -> str:
+def gen_cnst_meta_str_val(rel_item_path: pl.Path) -> str:
     return f'cnst metadata for target "{rel_item_path}"'
 
 
@@ -186,7 +186,7 @@ def gen_simple_metadata_block(*, rel_item_path: pl.Path,
                               include_const_key: bool=False) -> typ.Mapping:
     data = {meta_key_gen(rel_item_path): meta_val_gen(rel_item_path)}
     if include_const_key:
-        data[CNST_META_KEY] = gen_cnst_meta_scl_val(rel_item_path)
+        data[CNST_META_KEY] = gen_cnst_meta_str_val(rel_item_path)
     return data
 
 
@@ -207,12 +207,12 @@ def gen_complex_metadata_block(*, rel_item_path: pl.Path) -> typ.Mapping:
 
 def gen_simple_item_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
     return gen_simple_metadata_block(rel_item_path=rel_item_path, meta_key_gen=gen_item_meta_key,
-                                     meta_val_gen=gen_item_meta_scl_val, include_const_key=include_const_key)
+                                     meta_val_gen=gen_item_meta_str_val, include_const_key=include_const_key)
 
 
 def gen_simple_self_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
     return gen_simple_metadata_block(rel_item_path=rel_item_path, meta_key_gen=gen_self_meta_key,
-                                     meta_val_gen=gen_self_meta_scl_val, include_const_key=include_const_key)
+                                     meta_val_gen=gen_self_meta_str_val, include_const_key=include_const_key)
 
 
 def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include_const_key: bool=False) -> None:

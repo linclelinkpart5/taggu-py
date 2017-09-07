@@ -214,9 +214,9 @@ class TestQuery(unittest.TestCase):
     def tearDown(self):
         self.root_dir_obj.cleanup()
 
+
 if __name__ == '__main__':
     logging.getLogger(tcd.__name__).setLevel(level=logging.WARNING)
     logging.getLogger(tcl.__name__).setLevel(level=logging.WARNING)
     logging.getLogger(th.__name__).setLevel(level=logging.WARNING)
     unittest.main()
-

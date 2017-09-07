@@ -38,7 +38,7 @@ class TestQuery(unittest.TestCase):
             distinct_labels = frozenset((tsth.UNUSED_LABEL,))
 
             # Validate item metadata.
-            expected = (tsth.gen_item_meta_scl_val(curr_rel_path),) if curr_rel_path.parts else ()
+            expected = (tsth.gen_item_meta_str_val(curr_rel_path),) if curr_rel_path.parts else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_item_meta_key(curr_rel_path),
                                                  labels=None))
@@ -58,7 +58,7 @@ class TestQuery(unittest.TestCase):
             self.assertEqual(expected, produced)
 
             # Validate self metadata.
-            expected = (tsth.gen_self_meta_scl_val(curr_rel_path),) if curr_abs_path.is_dir() else ()
+            expected = (tsth.gen_self_meta_str_val(curr_rel_path),) if curr_abs_path.is_dir() else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_self_meta_key(curr_rel_path),
                                                  labels=None))
@@ -102,7 +102,7 @@ class TestQuery(unittest.TestCase):
                 rel_parent_distance = len(curr_rel_path.parts) - len(rel_parent.parts)
 
                 # Validate item metadata.
-                expected = (tsth.gen_item_meta_scl_val(rel_parent),) if rel_parent.parts else ()
+                expected = (tsth.gen_item_meta_str_val(rel_parent),) if rel_parent.parts else ()
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=item_field_name,
                                                              labels=None))
@@ -124,7 +124,7 @@ class TestQuery(unittest.TestCase):
                 self.assertEqual(expected, produced)
 
                 # Validate self metadata.
-                expected = (tsth.gen_self_meta_scl_val(rel_parent),)
+                expected = (tsth.gen_self_meta_str_val(rel_parent),)
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=self_field_name,
                                                              labels=None))
@@ -156,7 +156,7 @@ class TestQuery(unittest.TestCase):
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             if curr_abs_path.is_dir():
-                expected = tuple(tsth.gen_cnst_meta_scl_val(curr_rel_path / p)
+                expected = tuple(tsth.gen_cnst_meta_str_val(curr_rel_path / p)
                                  for p in lib_ctx.sorted_item_names_in_dir(curr_rel_path))
                 produced = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                             field_name=tsth.CNST_META_KEY,
@@ -174,7 +174,7 @@ class TestQuery(unittest.TestCase):
                     self.assertGreater(rel_distance, 0)
 
                     # Validate item metadata.
-                    exp = (tsth.gen_item_meta_scl_val(crp),) if crp.parents else ()
+                    exp = (tsth.gen_item_meta_str_val(crp),) if crp.parents else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None))
@@ -196,7 +196,7 @@ class TestQuery(unittest.TestCase):
                     self.assertEqual(exp, prd)
 
                     # Validate self metadata.
-                    exp = (tsth.gen_self_meta_scl_val(crp),) if cap.is_dir() else ()
+                    exp = (tsth.gen_self_meta_str_val(crp),) if cap.is_dir() else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None))
