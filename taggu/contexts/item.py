@@ -26,25 +26,31 @@ class ItemContext(abc.ABC):
         pass
 
     @classmethod
-    def yield_field(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer]) -> tcq.FieldValueGen:
+    def yield_field(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer],
+                    mapping_iter_style=tcq.MappingIterStyle.KEYS) -> tcq.FieldValueGen:
         query_ctx = cls.get_query_context()
         rel_item_path = cls.get_rel_item_path()
 
-        return query_ctx.yield_field(rel_item_path=rel_item_path, field_name=field_name, labels=labels)
+        return query_ctx.yield_field(rel_item_path=rel_item_path, field_name=field_name, labels=labels,
+                                     mapping_iter_style=mapping_iter_style)
 
     @classmethod
-    def yield_parent_fields(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer]) -> tcq.FieldValueGen:
+    def yield_parent_fields(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer],
+                            mapping_iter_style=tcq.MappingIterStyle.KEYS) -> tcq.FieldValueGen:
         query_ctx = cls.get_query_context()
         rel_item_path = cls.get_rel_item_path()
 
-        return query_ctx.yield_parent_fields(rel_item_path=rel_item_path, field_name=field_name, labels=labels)
+        return query_ctx.yield_parent_fields(rel_item_path=rel_item_path, field_name=field_name, labels=labels,
+                                             mapping_iter_style=mapping_iter_style)
 
     @classmethod
-    def yield_child_fields(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer]) -> tcq.FieldValueGen:
+    def yield_child_fields(cls, *, field_name: str, labels: typ.Optional[tcq.LabelContainer],
+                           mapping_iter_style=tcq.MappingIterStyle.KEYS) -> tcq.FieldValueGen:
         query_ctx = cls.get_query_context()
         rel_item_path = cls.get_rel_item_path()
 
-        return query_ctx.yield_child_fields(rel_item_path=rel_item_path, field_name=field_name, labels=labels)
+        return query_ctx.yield_child_fields(rel_item_path=rel_item_path, field_name=field_name, labels=labels,
+                                            mapping_iter_style=mapping_iter_style)
 
 
 def gen_item_ctx(*, query_context: tcq.QueryContext, rel_item_path: pl.Path) -> ItemContext:

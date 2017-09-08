@@ -30,8 +30,7 @@ class TestQuery(unittest.TestCase):
         root_dir = self.root_dir_pl
         qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx,
                                    label_extractor=tsth.default_label_extractor,
-                                   use_cache=True,
-                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
+                                   use_cache=True)
 
         def func(curr_rel_path: pl.Path, curr_abs_path: pl.Path):
             matching_labels = frozenset((tsth.default_label_extractor(curr_abs_path),))
@@ -41,40 +40,46 @@ class TestQuery(unittest.TestCase):
             expected = (tsth.gen_item_meta_str_val(curr_rel_path),) if curr_rel_path.parts else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_item_meta_key(curr_rel_path),
-                                                 labels=None))
+                                                 labels=None,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # Validate item metadata with matched labels.
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_item_meta_key(curr_rel_path),
-                                                 labels=matching_labels))
+                                                 labels=matching_labels,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # Validate item metadata with non-matched labels.
             expected = ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_item_meta_key(curr_rel_path),
-                                                 labels=distinct_labels))
+                                                 labels=distinct_labels,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # Validate self metadata.
             expected = (tsth.gen_self_meta_str_val(curr_rel_path),) if curr_abs_path.is_dir() else ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_self_meta_key(curr_rel_path),
-                                                 labels=None))
+                                                 labels=None,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # Validate self metadata with matched labels.
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_self_meta_key(curr_rel_path),
-                                                 labels=matching_labels))
+                                                 labels=matching_labels,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # Validate self metadata with non-matched labels.
             expected = ()
             produced = tuple(qry_ctx.yield_field(rel_item_path=curr_rel_path,
                                                  field_name=tsth.gen_self_meta_key(curr_rel_path),
-                                                 labels=distinct_labels))
+                                                 labels=distinct_labels,
+                                                 mapping_iter_style=tq.MappingIterStyle.KEYS))
             self.assertEqual(expected, produced)
 
             # TODO: See if this test is better suited for the YAML loader test.
@@ -89,8 +94,7 @@ class TestQuery(unittest.TestCase):
 
     def test_yield_parent_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True,
-                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
+        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
 
         def func(curr_rel_path: pl.Path, _: pl.Path):
             for rel_parent in curr_rel_path.parents:
@@ -105,14 +109,16 @@ class TestQuery(unittest.TestCase):
                 expected = (tsth.gen_item_meta_str_val(rel_parent),) if rel_parent.parts else ()
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=item_field_name,
-                                                             labels=None))
+                                                             labels=None,
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 # Validate item metadata with exact max distance.
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=item_field_name,
                                                              labels=None,
-                                                             max_distance=rel_parent_distance))
+                                                             max_distance=rel_parent_distance,
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 # Validate item metadata with insufficient max distance.
@@ -120,21 +126,24 @@ class TestQuery(unittest.TestCase):
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=item_field_name,
                                                              labels=None,
-                                                             max_distance=(rel_parent_distance - 1)))
+                                                             max_distance=(rel_parent_distance - 1),
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 # Validate self metadata.
                 expected = (tsth.gen_self_meta_str_val(rel_parent),)
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=self_field_name,
-                                                             labels=None))
+                                                             labels=None,
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 # Validate self metadata with exact max distance.
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=self_field_name,
                                                              labels=None,
-                                                             max_distance=rel_parent_distance))
+                                                             max_distance=rel_parent_distance,
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 # Validate self metadata with insufficient max distance.
@@ -142,15 +151,15 @@ class TestQuery(unittest.TestCase):
                 produced = tuple(qry_ctx.yield_parent_fields(rel_item_path=curr_rel_path,
                                                              field_name=self_field_name,
                                                              labels=None,
-                                                             max_distance=(rel_parent_distance - 1)))
+                                                             max_distance=(rel_parent_distance - 1),
+                                                             mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
 
     def test_yield_child_fields(self):
         root_dir = self.root_dir_pl
-        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True,
-                                   mapping_iter_style=tq.MappingIterStyle.KEYS)
+        qry_ctx = tq.gen_query_ctx(discovery_context=self.dis_ctx, label_extractor=None, use_cache=True)
         dis_ctx = qry_ctx.get_discovery_context()
         lib_ctx = dis_ctx.get_library_context()
 
@@ -160,7 +169,8 @@ class TestQuery(unittest.TestCase):
                                  for p in lib_ctx.sorted_item_names_in_dir(curr_rel_path))
                 produced = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                             field_name=tsth.CNST_META_KEY,
-                                                            labels=None))
+                                                            labels=None,
+                                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
                 def subfunc(crp: pl.Path, cap: pl.Path):
@@ -177,14 +187,16 @@ class TestQuery(unittest.TestCase):
                     exp = (tsth.gen_item_meta_str_val(crp),) if crp.parents else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_item_meta_key(crp),
-                                                           labels=None))
+                                                           labels=None,
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with exact max distance.
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None,
-                                                           max_distance=rel_distance))
+                                                           max_distance=rel_distance,
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with insufficient max distance.
@@ -192,21 +204,24 @@ class TestQuery(unittest.TestCase):
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_item_meta_key(crp),
                                                            labels=None,
-                                                           max_distance=(rel_distance - 1)))
+                                                           max_distance=(rel_distance - 1),
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                     # Validate self metadata.
                     exp = (tsth.gen_self_meta_str_val(crp),) if cap.is_dir() else ()
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_self_meta_key(crp),
-                                                           labels=None))
+                                                           labels=None,
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with exact max distance.
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None,
-                                                           max_distance=rel_distance))
+                                                           max_distance=rel_distance,
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                     # Validate item metadata with insufficient max distance.
@@ -214,7 +229,8 @@ class TestQuery(unittest.TestCase):
                     prd = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                            field_name=tsth.gen_self_meta_key(crp),
                                                            labels=None,
-                                                           max_distance=(rel_distance - 1)))
+                                                           max_distance=(rel_distance - 1),
+                                                           mapping_iter_style=tq.MappingIterStyle.KEYS))
                     self.assertEqual(exp, prd)
 
                 tsth.traverse(root_dir=root_dir, offset_sub_path=curr_rel_path,
@@ -224,7 +240,8 @@ class TestQuery(unittest.TestCase):
                 expected = ()
                 produced = tuple(qry_ctx.yield_child_fields(rel_item_path=curr_rel_path,
                                                             field_name=tsth.CNST_META_KEY,
-                                                            labels=None))
+                                                            labels=None,
+                                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
                 self.assertEqual(expected, produced)
 
         tsth.traverse(root_dir=root_dir, func=func, action_filter=tsth.default_item_filter)
@@ -234,6 +251,7 @@ class TestQuery(unittest.TestCase):
         # input('Press ENTER to continue and cleanup')
 
         self.root_dir_obj.cleanup()
+
 
 if __name__ == '__main__':
     logging.getLogger(td.__name__).setLevel(level=logging.WARNING)

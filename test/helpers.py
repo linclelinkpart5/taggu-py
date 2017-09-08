@@ -190,16 +190,24 @@ def gen_simple_metadata_block(*, rel_item_path: pl.Path,
     return data
 
 
+COMPLEX_META_KEY_STR_VAL = 'value is string'
+COMPLEX_META_KEY_SEQ_VAL = 'value is sequence'
+COMPLEX_META_KEY_MAP_VAL = 'value is mapping'
+COMPLEX_META_KEY_SUB_STR_VAL = 'subvalue is string'
+COMPLEX_META_KEY_SUB_SEQ_VAL = 'subvalue is sequence'
+COMPLEX_META_KEY_NUL_VAL = 'value is null'
+
+
 def gen_complex_metadata_block(*, rel_item_path: pl.Path) -> typ.Mapping:
+    val_str = str(rel_item_path)
     data = {
-        'key a': 'val a',
-        'key b': ['val b', 'val c'],
-        'key c': {
-            'key d': 'val d',
-            'key e': ['val e', 'val f'],
+        COMPLEX_META_KEY_STR_VAL: val_str,
+        COMPLEX_META_KEY_SEQ_VAL: [val_str, val_str],
+        COMPLEX_META_KEY_MAP_VAL: {
+            COMPLEX_META_KEY_SUB_STR_VAL: val_str,
+            COMPLEX_META_KEY_SUB_SEQ_VAL: [val_str, val_str],
         },
-        'key f': None,
-        None: 'val g',
+        COMPLEX_META_KEY_NUL_VAL: None,
     }
 
     return data
@@ -215,13 +223,19 @@ def gen_simple_self_metadata(rel_item_path: pl.Path, include_const_key: bool=Fal
                                      meta_val_gen=gen_self_meta_str_val, include_const_key=include_const_key)
 
 
-def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include_const_key: bool=False) -> None:
+def gen_complex_metadata(rel_item_path: pl.Path, include_const_key: bool=False) -> typ.Any:
+    return gen_complex_metadata_block(rel_item_path=rel_item_path)
+
+
+def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include_const_key: bool=False,
+                     self_metadata_gen=gen_simple_self_metadata, item_metadata_gen=gen_simple_item_metadata) -> None:
     def helper(curr_rel_path: pl.Path=pl.Path()):
         curr_abs_path = root_dir / curr_rel_path
         if curr_abs_path.is_dir():
             # Create self meta file.
             with (curr_abs_path / SELF_META_FN).open(mode='w') as stream:
-                data = gen_simple_self_metadata(curr_rel_path, include_const_key=include_const_key)
+                # data = gen_simple_self_metadata(curr_rel_path, include_const_key=include_const_key)
+                data = self_metadata_gen(curr_rel_path, include_const_key=include_const_key)
                 yaml.dump(data, stream)
 
             # Create item meta file.
@@ -232,13 +246,19 @@ def write_meta_files(root_dir: pl.Path, item_filter: tt.ItemFilter=None, include
                     helper(curr_rel_path=(curr_rel_path / item_name))
 
                 if item_filter is None or item_filter(abs_entry):
-                    data[item_name] = gen_simple_item_metadata(curr_rel_path / item_name,
-                                                               include_const_key=include_const_key)
+                    # data[item_name] = gen_simple_item_metadata(curr_rel_path / item_name,
+                    #                                            include_const_key=include_const_key)
+                    data[item_name] = item_metadata_gen(curr_rel_path / item_name, include_const_key=include_const_key)
 
             with (curr_abs_path / ITEM_META_FN).open(mode='w') as stream:
                 yaml.dump(data, stream)
 
     helper()
+
+
+def write_complex_meta_files(root_dir: pl.Path) -> None:
+    write_meta_files(root_dir=root_dir, item_filter=default_item_filter, include_const_key=False,
+                     self_metadata_gen=gen_complex_metadata, item_metadata_gen=gen_complex_metadata)
 
 
 def traverse(root_dir: pl.Path, func: TraverseVisitorFunc, offset_sub_path: pl.Path=pl.Path(),

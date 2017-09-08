@@ -73,15 +73,11 @@ class QueryContext(abc.ABC):
         pass
 
     @classmethod
-    @abc.abstractmethod
-    def get_mapping_iter_style(cls) -> MappingIterStyle:
-        pass
-
-    @classmethod
     def yield_field(cls, *,
                     rel_item_path: pl.Path,
                     field_name: str,
-                    labels: typ.Optional[LabelContainer]) -> FieldValueGen:
+                    labels: typ.Optional[LabelContainer],
+                    mapping_iter_style: MappingIterStyle) -> FieldValueGen:
         """Given a relative item path and a field name, yields metadata entries matching that field for that item.
         Only direct metadata for that item is looked up, no parent or child metadata is used.
         """
@@ -124,7 +120,7 @@ class QueryContext(abc.ABC):
                     elif isinstance(field_val, collections.abc.Sequence):
                         yield from field_val
                     elif isinstance(field_val, collections.abc.Mapping):
-                        mis = cls.get_mapping_iter_style().value
+                        mis = mapping_iter_style.value
                         yield from mis(field_val)
                     else:
                         logger.warning(f'Field "{field_name}" in meta file "{rel_meta_path}" had unexpected type, '
@@ -146,7 +142,8 @@ class QueryContext(abc.ABC):
                             rel_item_path: pl.Path,
                             field_name: str,
                             max_distance: typ.Optional[int]=None,
-                            labels: typ.Optional[LabelContainer]) -> FieldValueGen:
+                            labels: typ.Optional[LabelContainer],
+                            mapping_iter_style: MappingIterStyle) -> FieldValueGen:
         paths = tuple(rel_item_path.parents)
 
         if max_distance is not None and max_distance >= 0:
@@ -154,7 +151,8 @@ class QueryContext(abc.ABC):
 
         found = False
         for path in paths:
-            for field_val in cls.yield_field(rel_item_path=path, field_name=field_name, labels=labels):
+            for field_val in cls.yield_field(rel_item_path=path, field_name=field_name, labels=labels,
+                                             mapping_iter_style=mapping_iter_style):
                 yield field_val
                 found = True
 
@@ -166,7 +164,8 @@ class QueryContext(abc.ABC):
                            rel_item_path: pl.Path,
                            field_name: str,
                            max_distance: typ.Optional[int]=None,
-                           labels: typ.Optional[LabelContainer]) -> FieldValueGen:
+                           labels: typ.Optional[LabelContainer],
+                           mapping_iter_style: MappingIterStyle) -> FieldValueGen:
         # TODO: This function has issues with cyclic folder hierarchies, fix.
         dis_ctx: td.DiscoveryContext = cls.get_discovery_context()
         lib_ctx: tlib.LibraryContext = dis_ctx.get_library_context()
@@ -180,7 +179,8 @@ class QueryContext(abc.ABC):
                     rel_child_path = rip / child_item_name
 
                     found = False
-                    field_vals = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name, labels=labels)
+                    field_vals = cls.yield_field(rel_item_path=rel_child_path, field_name=field_name, labels=labels,
+                                                 mapping_iter_style=mapping_iter_style)
 
                     for field_val in field_vals:
                         yield field_val
@@ -208,7 +208,6 @@ class QueryContext(abc.ABC):
 
 def gen_query_ctx(*, discovery_context: td.DiscoveryContext,
                   label_extractor: typ.Optional[LabelExtractor],
-                  mapping_iter_style: MappingIterStyle,
                   use_cache: bool=True) -> QueryContext:
     meta_cacher = None
     if use_cache:
@@ -226,9 +225,5 @@ def gen_query_ctx(*, discovery_context: td.DiscoveryContext,
         @classmethod
         def get_meta_cacher(cls) -> typ.Optional[tmc.MetaCacher]:
             return meta_cacher
-
-        @classmethod
-        def get_mapping_iter_style(cls) -> MappingIterStyle:
-            return mapping_iter_style
 
     return QC()

@@ -1,10 +1,7 @@
 import logging
 import pathlib as pl
 import tempfile
-import typing as typ
 import unittest
-
-import yaml
 
 import taggu.contexts.discovery as tcd
 import taggu.contexts.library as tcl
@@ -76,7 +73,8 @@ class TestDiscovery(unittest.TestCase):
                 def yielder():
                     # Get the parent dir containing this self meta file.
                     yield (meta_rel_path.parent,
-                           {tsth.gen_self_meta_key(meta_rel_path.parent): tsth.gen_self_meta_str_val(meta_rel_path.parent)})
+                           {tsth.gen_self_meta_key(meta_rel_path.parent):
+                            tsth.gen_self_meta_str_val(meta_rel_path.parent)})
             else:
                 # Not a meta file.
                 continue

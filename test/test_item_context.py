@@ -21,15 +21,14 @@ class TestQuery(unittest.TestCase):
         self.dis_ctx = tcd.gen_discovery_ctx(library_context=self.lib_ctx)
         self.qry_ctx = tcq.gen_query_ctx(discovery_context=self.dis_ctx,
                                          label_extractor=tsth.default_label_extractor,
-                                         use_cache=True,
-                                         mapping_iter_style=tcq.MappingIterStyle.KEYS)
+                                         use_cache=True)
 
         dir_hier_map = tsth.gen_default_dir_hier_map()
         tsth.write_dir_hierarchy(root_dir=self.root_dir_pl,
                                  dir_mapping=dir_hier_map,
                                  item_file_suffix=tsth.ITEM_FILE_EXT,
                                  apply_random_salt=True)
-        tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=tsth.default_item_filter, include_const_key=True)
+        tsth.write_complex_meta_files(root_dir=self.root_dir_pl)
 
         self.rel_meta_paths = frozenset(tsth.yield_fs_contents_recursively(root_dir=self.root_dir_pl,
                                                                            pass_filter=tsth.is_meta_file_path))
@@ -56,10 +55,17 @@ class TestQuery(unittest.TestCase):
             matching_labels = frozenset((tsth.default_label_extractor(abs_item_path),))
 
             itm_ctx = tci.gen_item_ctx(query_context=qry_ctx, rel_item_path=rel_item_path)
+            str_rel_item_path = str(rel_item_path)
 
-            # Validate item metadata.
-            expected = (tsth.gen_item_meta_str_val(rel_item_path),) if rel_item_path.parts else ()
-            produced = tuple(itm_ctx.yield_field(field_name=tsth.gen_item_meta_key(rel_item_path),
+            # Test yielding a string value.
+            expected = (str_rel_item_path,)
+            produced = tuple(itm_ctx.yield_field(field_name=tsth.COMPLEX_META_KEY_STR_VAL,
+                                                 labels=None))
+            self.assertEqual(expected, produced)
+
+            # Test yielding a sequence value.
+            expected = (str_rel_item_path, str_rel_item_path)
+            produced = tuple(itm_ctx.yield_field(field_name=tsth.COMPLEX_META_KEY_SEQ_VAL,
                                                  labels=None))
             self.assertEqual(expected, produced)
 
