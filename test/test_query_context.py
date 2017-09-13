@@ -2,6 +2,7 @@ import logging
 import pathlib as pl
 import tempfile
 import unittest
+import itertools as it
 
 import taggu.contexts.discovery as td
 import taggu.contexts.library as tl
@@ -25,6 +26,152 @@ class TestQuery(unittest.TestCase):
                                  item_file_suffix=tsth.ITEM_FILE_EXT,
                                  apply_random_salt=True)
         tsth.write_meta_files(root_dir=self.root_dir_pl, item_filter=tsth.default_item_filter, include_const_key=True)
+
+    def test_field_flattener_a(self):
+        STR = 'test'
+
+        field_value = STR
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=None,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        field_value = None
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=None,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        field_value = (STR, None)
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = field_value
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=None,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        field_value = ((STR, None), STR, (None, None, (STR, STR)))
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = field_value
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = (STR, None, STR, None, None, (STR, STR))
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=2,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = (STR, None, STR, None, None, STR, STR)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=None,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+    def test_field_flattener_b(self):
+        field_value = {f'key{i}': f'val{i}' for i in range(5)}
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(field_value.keys())
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.VALS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(field_value.values())
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.VALS))
+        self.assertEqual(expected, produced)
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.PAIRS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(field_value.items())
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.PAIRS))
+        self.assertEqual(expected, produced)
+
+        def yield_all(mapping):
+            for k, v in mapping.items():
+                yield k
+                yield v
+
+        expected = tuple(yield_all(field_value))
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=2,
+                                            mapping_iter_style=tq.MappingIterStyle.PAIRS))
+        self.assertEqual(expected, produced)
+
+        field_value = {(f'key{i}_a', f'key{i}_b'): (f'val{i}_a', f'val{i}_b') for i in range(5)}
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(field_value.keys())
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(it.chain.from_iterable(field_value.keys()))
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=2,
+                                            mapping_iter_style=tq.MappingIterStyle.KEYS))
+        self.assertEqual(expected, produced)
+
+        expected = (field_value,)
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=0,
+                                            mapping_iter_style=tq.MappingIterStyle.VALS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(field_value.values())
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=1,
+                                            mapping_iter_style=tq.MappingIterStyle.VALS))
+        self.assertEqual(expected, produced)
+
+        expected = tuple(it.chain.from_iterable(field_value.values()))
+        produced = tuple(tq.field_flattener(field_value=field_value, flatten_limit=2,
+                                            mapping_iter_style=tq.MappingIterStyle.VALS))
+        self.assertEqual(expected, produced)
 
     def test_yield_field(self):
         root_dir = self.root_dir_pl

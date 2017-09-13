@@ -9,6 +9,7 @@ import taggu.contexts.discovery as td
 import taggu.logging as tl
 import taggu.types as tt
 import taggu.meta_cache as tmc
+import taggu.helpers as th
 
 logger = tl.get_logger(__name__)
 
@@ -33,23 +34,36 @@ def mis_pairs(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
     yield from d.items()
 
 
-def mis_keys_and_vals(d: typ.Mapping) -> typ.Generator[typ.Any, None, None]:
-    for k, v in d.items():
-        yield k
-        yield v
-
-
-def mis_skip(_) -> typ.Generator[typ.Any, None, None]:
-    if False:
-        yield
-
-
 class MappingIterStyle(enum.Enum):
     KEYS = mis_keys
     VALS = mis_vals
     PAIRS = mis_pairs
-    KEYS_AND_VALS = mis_keys_and_vals
-    SKIP = mis_skip
+
+
+def field_flattener(*, field_value: typ.Union[None, str, typ.Sequence, typ.Mapping], flatten_limit: typ.Optional[int],
+                    mapping_iter_style: MappingIterStyle):
+    next_fl: typ.Optional[int] = (flatten_limit - 1) if flatten_limit is not None else None
+
+    if field_value is None:
+        # Just yield None.
+        yield None
+    # TODO: Need to check for bytes as well?
+    elif isinstance(field_value, str):
+        # Just yield the value.
+        yield field_value
+    elif isinstance(field_value, collections.abc.Sequence):
+        if flatten_limit is None or flatten_limit > 0:
+            for i in field_value:
+                yield from field_flattener(field_value=i, flatten_limit=next_fl, mapping_iter_style=mapping_iter_style)
+        else:
+            yield field_value
+    elif isinstance(field_value, collections.abc.Mapping):
+        if flatten_limit is None or flatten_limit > 0:
+            mis: MappingIterFunc = mapping_iter_style
+            for i in mis(field_value):
+                yield from field_flattener(field_value=i, flatten_limit=next_fl, mapping_iter_style=mapping_iter_style)
+        else:
+            yield field_value
 
 
 class QueryContext(abc.ABC):
@@ -77,7 +91,8 @@ class QueryContext(abc.ABC):
                     rel_item_path: pl.Path,
                     field_name: str,
                     labels: typ.Optional[LabelContainer],
-                    mapping_iter_style: MappingIterStyle) -> FieldValueGen:
+                    mapping_iter_style: MappingIterStyle,
+                    recursive: bool=True) -> FieldValueGen:
         """Given a relative item path and a field name, yields metadata entries matching that field for that item.
         Only direct metadata for that item is looked up, no parent or child metadata is used.
         """
@@ -93,7 +108,7 @@ class QueryContext(abc.ABC):
                                 f'did not match any expected labels, skipping')
                     return
 
-        meta_cacher: tmc.MetaCacher = cls.get_meta_cacher()
+        meta_cacher: typ.Optional[tmc.MetaCacher] = cls.get_meta_cacher()
 
         for rel_meta_path in discovery_context.meta_files_from_item(rel_item_path):
             if meta_cacher is not None:
@@ -118,10 +133,20 @@ class QueryContext(abc.ABC):
                     elif isinstance(field_val, str):
                         yield field_val
                     elif isinstance(field_val, collections.abc.Sequence):
-                        yield from field_val
+                        if recursive:
+                            # Recursively flatten the iterables.
+                            yield from th.recursive_flatten(field_val)
+                        else:
+                            # Flatten only this level.
+                            yield from field_val
                     elif isinstance(field_val, collections.abc.Mapping):
                         mis = mapping_iter_style.value
-                        yield from mis(field_val)
+                        i = mis(field_val)
+
+                        if recursive:
+                            yield from th.recursive_flatten(i)
+                        else:
+                            yield from i
                     else:
                         logger.warning(f'Field "{field_name}" in meta file "{rel_meta_path}" had unexpected type, '
                                        f'skipping')

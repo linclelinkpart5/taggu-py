@@ -6,7 +6,7 @@ ItemSortKey = typ.Callable[[pl.Path], typ.Any]
 
 MetadataKey = typ.NewType('MetadataKey', str)
 FieldValue = typ.Optional[str]
-MetadataValue = typ.Union[FieldValue, typ.Sequence[FieldValue]]
+MetadataValue = typ.Union[FieldValue, typ.Sequence['MetadataValue'], typ.Mapping['MetadataValue', 'MetadataValue']]
 
 Metadata = typ.Mapping[MetadataKey, MetadataValue]
 
@@ -20,6 +20,7 @@ class MetaSourceSpec(typ.NamedTuple):
     meta_file_name: pl.Path
     dir_getter: DirGetter
     multiplexer: Multiplexer
+
 
 MetaSourceSpecGen = typ.Generator[MetaSourceSpec, None, None]
 

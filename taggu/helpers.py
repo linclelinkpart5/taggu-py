@@ -2,6 +2,7 @@ import typing as typ
 import os
 import os.path
 import pathlib as pl
+import collections.abc
 
 import yaml
 
@@ -139,3 +140,14 @@ def dedupe(iterable: typ.Iterable[T]) -> typ.Generator[T, None, None]:
 def yield_self_and_parents(path: pl.Path) -> typ.Generator[pl.Path, None, None]:
     yield path
     yield from path.parents
+
+
+RecT = typ.Union[T, typ.Iterable['RecT']]
+
+
+def recursive_flatten(iterable: typ.Iterable[RecT]) -> typ.Iterable[T]:
+    for el in iterable:
+        if isinstance(el, collections.abc.Iterable) and not isinstance(el, (str, bytes)):
+            yield from recursive_flatten(el)
+        else:
+            yield el
